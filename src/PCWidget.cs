@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.5.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.6.0.0")]
 
 static class Program
 {
@@ -119,7 +119,7 @@ static class Program
         Set(rmIni, sec, "Active", "1");
         Set(rmIni, sec, "WindowX", right ? "0R" : "0");
         Set(rmIni, sec, "AnchorX", right ? "100%" : "0%");
-        Set(rmIni, sec, "WindowY", bottom ? "97B" : "49");   // mittig neben dem kompakten Widget
+        Set(rmIni, sec, "WindowY", bottom ? "53B" : "5");   // mittig neben dem kompakten Widget
         Set(rmIni, sec, "AnchorY", bottom ? "100%" : "0%");
         Set(rmIni, sec, "AlwaysOnTop", "2");
         Set(rmIni, sec, "Draggable", "0");
@@ -127,7 +127,7 @@ static class Program
         Set(rmIni, sec, "SnapEdges", "0");
         Set(tabIni, "Variables", "Arrow", right ? "[\\xE76B]" : "[\\xE76C]");
         Set(tabIni, "Variables", "TabX", right ? "0R" : "0");
-        Set(tabIni, "Variables", "TabY", bottom ? "97B" : "49");
+        Set(tabIni, "Variables", "TabY", bottom ? "53B" : "5");
         Set(tabIni, "Variables", "TabAX", right ? "100%" : "0%");
         Set(tabIni, "Variables", "TabAY", bottom ? "100%" : "0%");
     }
@@ -199,7 +199,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.5";
+    public const string Version = "1.6";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -256,7 +256,7 @@ static class Installer
 
                 string tabIni = Path.Combine(rm, @"Skins\PCWidget\Tab\Tab.ini");
                 var keepTab = new Dictionary<string, string>();
-                foreach (var k in new[] { "Arrow", "TabOnApp", "TabOnDesk", "TabX", "TabY", "TabAX", "TabAY" }) { var v = Read(tabIni, "Variables", k); if (v != null) keepTab[k] = v; }
+                foreach (var k in new[] { "TabOnApp", "TabOnDesk" }) { var v = Read(tabIni, "Variables", k); if (v != null) keepTab[k] = v; }
 
                 for (int i = 0; Directory.Exists(rm); i++)
                 {
@@ -280,7 +280,7 @@ static class Installer
                 foreach (var kv in keep) WritePrivateProfileString("Variables", kv.Key, kv.Value, skin);
                 foreach (var kv in keepTab) WritePrivateProfileString("Variables", kv.Key, kv.Value, tabIni);
                 // Aeltere Versionen kannten den Pfeil-Griff noch nicht -> passend zur Widget-Seite eintragen
-                if (Read(rmIni, @"PCWidget\Tab", "Active") == null)
+                // Griff-Position immer passend zur Widget-Seite neu setzen (Groesse kann sich zwischen Versionen aendern)
                 {
                     bool r = Read(rmIni, "PCWidget", "AnchorX") != "0%", b = Read(rmIni, "PCWidget", "AnchorY") == "100%";
                     Program.WriteTabPosition(r, b, rmIni, tabIni);

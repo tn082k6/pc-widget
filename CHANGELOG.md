@@ -1,5 +1,14 @@
 # Änderungen
 
+## 1.6 – 15.11.2026
+
+- **Größerer Pfeil-Griff** (24 × 90) mit einer unsichtbaren, noch größeren Hover-Zone – viel leichter zu treffen.
+- **Kein Flackern mehr beim Aufklappen:** Das Widget klappt nur noch auf, wenn es zu ist, und erst wieder zu, wenn die Maus eine Drittelsekunde weg ist.
+- Behoben: Nach dem Laden war das Widget manchmal schon aufgeklappt.
+- Behoben: Tooltip „Dieser PC öffnen“ tauchte über dem halben Widget auf.
+- Behoben: doppelte Reste in der Widget-Datei aus 1.4/1.5 aufgeräumt.
+- Beim Update wird die Position des Pfeil-Griffs immer passend neu gesetzt.
+
 ## 1.5 – 15.11.2026
 
 - **Maus auf den Pfeil = Widget kommt raus:** Kurz (¼ Sekunde) mit der Maus auf den Pfeil-Griff – das Widget erscheint. Maus wieder weg, und es geht zurück an den Rand. Klick auf den Pfeil holt es dauerhaft zurück.

@@ -34,6 +34,10 @@ Einstellungen später über *Startmenü → PC-Widget*. Entfernen über *Einstel
 
 Für den Musik-Teil wird die Spotify-Desktop-App gebraucht (funktioniert über die Windows-Mediensteuerung).
 
+## Änderungen
+
+Was in welcher Version neu ist: siehe **[CHANGELOG.md](CHANGELOG.md)**.
+
 ## Selbst bauen
 
 Voraussetzung: [Rainmeter 4.5](https://www.rainmeter.net) installiert.

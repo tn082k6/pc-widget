@@ -1,29 +1,22 @@
-﻿PC-WIDGET  (iOS-18-Style, fÃ¼r Windows 10/11)
+﻿PC-WIDGET  (iOS-18-Style, für Windows 10/11)
 ============================================
 
 STARTEN
-1. Den ganzen Ordner "PC-Widget" irgendwohin entpacken (z. B. nach Dokumente).
-   Nicht direkt aus der ZIP starten!
-2. Doppelklick auf  PC-Widget.exe
-3. Beim ersten Start deine Stadt fÃ¼rs Wetter eingeben -> "Speichern & Starten".
-   Das Widget erscheint oben rechts auf dem Hauptbildschirm.
+Einfach PC-Widget.exe doppelklicken. Beim ersten Start richtet sich das Widget
+selbst ein (nach %LOCALAPPDATA%\PC-Widget), fragt nach deiner Stadt fürs Wetter
+und startet. Danach findest du es im Startmenü unter "PC-Widget".
 
-Falls Windows "Der Computer wurde durch Windows geschÃ¼tzt" zeigt:
--> "Weitere Informationen" -> "Trotzdem ausfÃ¼hren". (Die App ist selbstgebaut
-   und nicht signiert, deshalb kennt Windows sie nicht.)
+Falls Windows "Der Computer wurde durch Windows geschützt" zeigt:
+-> "Weitere Informationen" -> "Trotzdem ausführen" (die App ist nicht signiert).
 
 BEDIENUNG
-- Immer sichtbar: Uhr, Datum und was gerade auf Spotify lÃ¤uft
-  (Play/Pause, ZurÃ¼ck, Weiter; Klick aufs Cover Ã¶ffnet Spotify)
-- Maus drÃ¼ber: klappt auf -> Spotify-LautstÃ¤rke (Mausrad oder Klick),
-  Wetter, CPU / GPU / RAM / Festplatte als Ringe
-- Einstellungen (Stadt, Autostart) oder Widget beenden:
-  PC-Widget.exe nochmal doppelklicken, wÃ¤hrend das Widget lÃ¤uft.
+- Immer sichtbar: Uhr, Datum und was gerade auf Spotify läuft
+- Maus drüber: klappt auf -> Spotify-Lautstärke, Wetter, CPU/GPU/RAM/Festplatte
+- Klick auf CPU/GPU/RAM = Task-Manager, Klick auf C: = Dieser PC
+- Einstellungen: Startmenü -> PC-Widget (oder PC-Widget.exe nochmal starten)
 
 ENTFERNEN
-PC-Widget.exe Ã¶ffnen -> Haken "Mit Windows starten" raus -> Speichern,
-dann "Widget beenden" und den Ordner lÃ¶schen.
+Einstellungen -> Apps -> Installierte Apps -> PC-Widget -> Deinstallieren.
 
-Technik: Das Widget lÃ¤uft mit Rainmeter (kostenlos, Open Source, GPL v2,
-https://www.rainmeter.net, Quellcode: https://github.com/rainmeter/rainmeter).
-Wetter von open-meteo.com. Musik Ã¼ber die Windows-Mediensteuerung.
+Technik: Rainmeter (GPL v2, https://github.com/rainmeter/rainmeter),
+Wetter von open-meteo.com, PLZ von zippopotam.us.

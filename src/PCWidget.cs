@@ -40,12 +40,17 @@ static class Program
         try { SetProcessDPIAware(); } catch { }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        string arg = args.Length > 0 ? args[0].ToLowerInvariant() : "";
         if (!File.Exists(RmExe) || !File.Exists(SkinIni))
         {
-            MessageBox.Show("Der Ordner \"Rainmeter\" fehlt neben PC-Widget.exe.\nBitte den ganzen ZIP-Ordner entpacken, nicht nur die .exe.", "PC-Widget", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            // Einzelne exe (z. B. frisch heruntergeladen): sich selbst einrichten
+            if (Installer.HasPayload()) { Installer.InstallAndLaunch(); return; }
+            MessageBox.Show("Der Ordner \"Rainmeter\" fehlt neben PC-Widget.exe.\nBitte den ganzen Ordner entpacken, nicht nur die .exe.", "PC-Widget", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
-        bool autostart = args.Length > 0 && args[0] == "/autostart";
+        if (arg == "/uninstall") { Installer.Uninstall(); return; }
+        Installer.Unblock(Base);   // Internet-Markierung entfernen -> keine Sicherheitsabfragen bei jedem Start
+        bool autostart = arg == "/autostart";
         bool running = IsRunning();
         if (autostart) { if (!running) Start(); return; }
         if (running || !File.Exists(SetupFlag)) { Application.Run(new SetupForm(running)); return; }
@@ -62,7 +67,8 @@ static class Program
         }
         return null;
     }
-    public static void Start() { Process.Start(new ProcessStartInfo(RmExe) { WorkingDirectory = RmDir, UseShellExecute = true }); }
+    // ohne ShellExecute -> keine "Datei ausfuehren?"-Abfrage von Windows
+    public static void Start() { Process.Start(new ProcessStartInfo(RmExe) { WorkingDirectory = RmDir, UseShellExecute = false }); }
     public static void Quit(bool wait)
     {
         var p = FindProcess();
@@ -132,6 +138,151 @@ static class Program
             }
         }
         return list;
+    }
+}
+
+// ======================= Selbst-Einrichtung =======================
+static class Installer
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool DeleteFile(string path);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
+
+    public const string Version = "1.2";
+    const string PayloadName = "payload.zip";
+    const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
+    public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
+    static string StartMenuLnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "PC-Widget.lnk");
+
+    public static bool HasPayload()
+    {
+        using (var s = typeof(Installer).Assembly.GetManifestResourceStream(PayloadName)) return s != null;
+    }
+
+    // Entfernt die "aus dem Internet"-Markierung (Zone.Identifier) von allen Dateien
+    public static void Unblock(string dir)
+    {
+        try { foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories)) DeleteFile(f + ":Zone.Identifier"); } catch { }
+    }
+
+    static string Read(string file, string sec, string key)
+    {
+        if (!File.Exists(file)) return null;
+        var sb = new StringBuilder(1024); GetPrivateProfileString(sec, key, "\u0001", sb, 1024, file);
+        return sb.ToString() == "\u0001" ? null : sb.ToString();
+    }
+
+    public static void InstallAndLaunch()
+    {
+        string exe = Path.Combine(Dir, "PC-Widget.exe");
+        string rm = Path.Combine(Dir, "Rainmeter");
+        string ver = Path.Combine(Dir, "version.txt");
+        bool same = File.Exists(exe) && File.Exists(Path.Combine(rm, "Rainmeter.exe")) && File.Exists(ver) && File.ReadAllText(ver).Trim() == Version;
+        if (!same)
+        {
+            Cursor.Current = Cursors.WaitCursor;
+            try
+            {
+                // laufendes Widget dieser Installation beenden
+                foreach (var p in Process.GetProcessesByName("Rainmeter"))
+                {
+                    try
+                    {
+                        if (p.MainModule.FileName.StartsWith(Dir, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Process.Start(new ProcessStartInfo(p.MainModule.FileName, "!Quit") { UseShellExecute = false, CreateNoWindow = true });
+                            if (!p.WaitForExit(6000)) p.Kill();
+                        }
+                    }
+                    catch { }
+                }
+                // Einstellungen einer alten Version merken
+                string rmIni = Path.Combine(rm, "Rainmeter.ini"), skin = Path.Combine(rm, @"Skins\PCWidget\PCWidget.ini"), flag = Path.Combine(rm, "einrichtung.ok");
+                byte[] oldRmIni = File.Exists(rmIni) ? File.ReadAllBytes(rmIni) : null;
+                var keep = new Dictionary<string, string>();
+                foreach (var k in new[] { "Lat", "Lon", "Ort", "PosBang" }) { var v = Read(skin, "Variables", k); if (v != null) keep[k] = v; }
+                bool wasSetup = File.Exists(flag);
+
+                if (Directory.Exists(rm)) Directory.Delete(rm, true);
+                Directory.CreateDirectory(Dir);
+                using (var s = typeof(Installer).Assembly.GetManifestResourceStream(PayloadName))
+                using (var zip = new System.IO.Compression.ZipArchive(s))
+                {
+                    foreach (var e in zip.Entries)
+                    {
+                        if (string.IsNullOrEmpty(e.Name)) continue;
+                        string target = Path.GetFullPath(Path.Combine(Dir, e.FullName.Replace('/', '\\')));
+                        if (!target.StartsWith(Dir, StringComparison.OrdinalIgnoreCase)) continue;
+                        Directory.CreateDirectory(Path.GetDirectoryName(target));
+                        using (var src = e.Open()) using (var dst = File.Create(target)) src.CopyTo(dst);
+                    }
+                }
+                if (oldRmIni != null) File.WriteAllBytes(rmIni, oldRmIni);
+                foreach (var kv in keep) WritePrivateProfileString("Variables", kv.Key, kv.Value, skin);
+                if (wasSetup) File.WriteAllText(flag, DateTime.Now.ToString("s"));
+
+                File.Copy(Application.ExecutablePath, exe, true);
+                File.WriteAllText(ver, Version);
+                Unblock(Dir);
+                CreateShortcut(StartMenuLnk, exe);
+                Register(exe);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("PC-Widget konnte nicht eingerichtet werden:\n" + ex.Message, "PC-Widget", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+        }
+        Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = Dir, UseShellExecute = false });
+    }
+
+    static void CreateShortcut(string lnk, string target)
+    {
+        try
+        {
+            var t = Type.GetTypeFromProgID("WScript.Shell");
+            object sh = Activator.CreateInstance(t);
+            object sc = t.InvokeMember("CreateShortcut", System.Reflection.BindingFlags.InvokeMethod, null, sh, new object[] { lnk });
+            var st = sc.GetType();
+            st.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, sc, new object[] { target });
+            st.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty, null, sc, new object[] { Path.GetDirectoryName(target) });
+            st.InvokeMember("IconLocation", System.Reflection.BindingFlags.SetProperty, null, sc, new object[] { target + ",0" });
+            st.InvokeMember("Description", System.Reflection.BindingFlags.SetProperty, null, sc, new object[] { "PC-Widget – Einstellungen" });
+            st.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, sc, null);
+        }
+        catch { }
+    }
+
+    // Eintrag unter Einstellungen > Apps, damit man es normal deinstallieren kann
+    static void Register(string exe)
+    {
+        using (var k = Registry.CurrentUser.CreateSubKey(UninstKey))
+        {
+            k.SetValue("DisplayName", "PC-Widget");
+            k.SetValue("DisplayVersion", Version);
+            k.SetValue("Publisher", "PC-Widget");
+            k.SetValue("DisplayIcon", exe + ",0");
+            k.SetValue("InstallLocation", Dir);
+            k.SetValue("UninstallString", "\"" + exe + "\" /uninstall");
+            k.SetValue("NoModify", 1, RegistryValueKind.DWord);
+            k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+            long kb = 0; foreach (var f in Directory.GetFiles(Dir, "*", SearchOption.AllDirectories)) kb += new FileInfo(f).Length / 1024;
+            k.SetValue("EstimatedSize", (int)kb, RegistryValueKind.DWord);
+        }
+    }
+
+    public static void Uninstall()
+    {
+        if (MessageBox.Show("PC-Widget wirklich entfernen?", "PC-Widget", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        Program.Quit(true);
+        Program.SetAutostart(false);
+        try { if (File.Exists(StartMenuLnk)) File.Delete(StartMenuLnk); } catch { }
+        try { Registry.CurrentUser.DeleteSubKeyTree(UninstKey, false); } catch { }
+        string dir = Program.Base.TrimEnd('\\');
+        // Ordner erst loeschen, wenn diese exe beendet ist
+        if (dir.Equals(Dir, StringComparison.OrdinalIgnoreCase))
+            Process.Start(new ProcessStartInfo("cmd.exe", "/c timeout /t 4 /nobreak >nul & rmdir /s /q \"" + dir + "\"") { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });
+        MessageBox.Show("PC-Widget wurde entfernt.", "PC-Widget", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 }
 

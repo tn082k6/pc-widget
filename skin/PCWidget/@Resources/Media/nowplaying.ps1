@@ -1,4 +1,4 @@
-# PC Widget - Musik-Helfer
+﻿# PC Widget - Musik-Helfer
 # Liest ueber Windows (Medien-Steuerung) aus, was Spotify gerade spielt,
 # schreibt Titel/Kuenstler/Cover fuer Rainmeter in eine Datei und fuehrt
 # Klicks auf Play/Pause/Weiter/Zurueck aus.

@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.4.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.5.0.0")]
 
 static class Program
 {
@@ -99,6 +99,16 @@ static class Program
     }
     public static void MarkSetupDone() { File.WriteAllText(SetupFlag, DateTime.Now.ToString("s")); }
 
+    // Wetter-Ort zusaetzlich hier merken: liegt ausserhalb des Rainmeter-Ordners und ueberlebt jedes Update
+    public static string SettingsFile { get { return Path.Combine(Base, "einstellungen.ini"); } }
+    public static void SaveWeather(string ort, string plz, string lat, string lon)
+    {
+        Set(SkinIni, "Variables", "Ort", ort); Set(SkinIni, "Variables", "PLZ", plz);
+        Set(SkinIni, "Variables", "Lat", lat); Set(SkinIni, "Variables", "Lon", lon);
+        Set(SettingsFile, "Wetter", "Ort", ort); Set(SettingsFile, "Wetter", "PLZ", plz);
+        Set(SettingsFile, "Wetter", "Lat", lat); Set(SettingsFile, "Wetter", "Lon", lon);
+    }
+
     public static string TabIni { get { return Path.Combine(RmDir, @"Skins\PCWidget\Tab\Tab.ini"); } }
 
     // Pfeil-Griff an die richtige Kante setzen (rechts/links, oben/unten wie das Widget)
@@ -133,7 +143,7 @@ static class Program
         Set(TabIni, "Variables", "TabOnDesk", on ? "[!HideFade]" : "");
     }
 
-    public class Place { public string Name, Detail, Lat, Lon; }
+    public class Place { public string Name, Detail, Lat, Lon, Plz = ""; }
 
     // Orte suchen ueber open-meteo.com (Name oder PLZ, kostenlos, kein Konto)
     public static List<Place> Search(string q)
@@ -153,7 +163,7 @@ static class Program
                         var root = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(wc.DownloadString("https://api.zippopotam.us/" + cc + "/" + q));
                         string country = Convert.ToString(root["country"]);
                         foreach (Dictionary<string, object> p in (System.Collections.ArrayList)root["places"])
-                            list.Add(new Place { Name = Convert.ToString(p["place name"]), Detail = q + "  ·  " + Convert.ToString(p["state"]) + ", " + country, Lat = Convert.ToString(p["latitude"], System.Globalization.CultureInfo.InvariantCulture), Lon = Convert.ToString(p["longitude"], System.Globalization.CultureInfo.InvariantCulture) });
+                            list.Add(new Place { Name = Convert.ToString(p["place name"]), Detail = q + "  ·  " + Convert.ToString(p["state"]) + ", " + country, Lat = Convert.ToString(p["latitude"], System.Globalization.CultureInfo.InvariantCulture), Lon = Convert.ToString(p["longitude"], System.Globalization.CultureInfo.InvariantCulture), Plz = q });
                     }
                 }
                 catch (WebException) { } // 404 = PLZ unbekannt
@@ -173,7 +183,9 @@ static class Program
                 var det = new List<string>();
                 if (s("admin1") != "") det.Add(s("admin1"));
                 if (s("country") != "") det.Add(s("country"));
-                list.Add(new Place { Name = s("name"), Detail = string.Join(", ", det), Lat = s("latitude"), Lon = s("longitude") });
+                string plz = "";
+                if (r.ContainsKey("postcodes") && r["postcodes"] is System.Collections.ArrayList && ((System.Collections.ArrayList)r["postcodes"]).Count > 0) plz = Convert.ToString(((System.Collections.ArrayList)r["postcodes"])[0]);
+                list.Add(new Place { Name = s("name"), Detail = string.Join(", ", det), Lat = s("latitude"), Lon = s("longitude"), Plz = plz });
             }
         }
         return list;
@@ -187,7 +199,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.4";
+    public const string Version = "1.5";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -239,7 +251,7 @@ static class Installer
                 string rmIni = Path.Combine(rm, "Rainmeter.ini"), skin = Path.Combine(rm, @"Skins\PCWidget\PCWidget.ini"), flag = Path.Combine(rm, "einrichtung.ok");
                 byte[] oldRmIni = File.Exists(rmIni) ? File.ReadAllBytes(rmIni) : null;
                 var keep = new Dictionary<string, string>();
-                foreach (var k in new[] { "Lat", "Lon", "Ort", "PosBang", "HideAction", "ShowAction", "GrabX" }) { var v = Read(skin, "Variables", k); if (v != null) keep[k] = v; }
+                foreach (var k in new[] { "Lat", "Lon", "Ort", "PLZ", "PosBang", "HideAction", "ShowAction", "GrabX" }) { var v = Read(skin, "Variables", k); if (v != null) keep[k] = v; }
                 bool wasSetup = File.Exists(flag);
 
                 string tabIni = Path.Combine(rm, @"Skins\PCWidget\Tab\Tab.ini");
@@ -275,6 +287,12 @@ static class Installer
                     WritePrivateProfileString("Variables", "GrabX", r ? "0" : "268", skin);
                 }
                 if (wasSetup) File.WriteAllText(flag, DateTime.Now.ToString("s"));
+                // Wetter-Ort aus der eigenen Einstellungsdatei wiederherstellen (hat Vorrang)
+                string sf = Path.Combine(Dir, "einstellungen.ini");
+                foreach (var k in new[] { "Ort", "PLZ", "Lat", "Lon" }) { var v = Read(sf, "Wetter", k); if (v != null) WritePrivateProfileString("Variables", k, v, skin); }
+                // aeltere Versionen hatten noch keine Einstellungsdatei -> jetzt anlegen
+                if (Read(sf, "Wetter", "Ort") == null && keep.ContainsKey("Ort"))
+                    foreach (var k in new[] { "Ort", "PLZ", "Lat", "Lon" }) if (keep.ContainsKey(k)) WritePrivateProfileString("Wetter", k, keep[k], sf);
 
                 // alte exe kann sich nach einem Update noch beenden -> kurz warten
                 for (int i = 0; ; i++)
@@ -663,7 +681,7 @@ class SetupForm : Form
         results.MouseClick += (s, e) => Pick(results.IndexFromPoint(e.Location));
         chosen = new Label { AutoSize = false, Location = new Point(L + UI.S(2), searchCard.Bottom + UI.S(8)), Size = new Size(CW, UI.S(22)), ForeColor = UI.Sub, Font = UI.F(9.5f) };
         string ort = Program.Get(Program.SkinIni, "Variables", "Ort", "");
-        chosen.Text = running || File.Exists(Path.Combine(Program.RmDir, "einrichtung.ok")) ? "✓  Aktuell: " + ort : "Noch kein Ort gewählt (Standard: " + ort + ")";
+        chosen.Text = running || File.Exists(Path.Combine(Program.RmDir, "einrichtung.ok")) ? "✓  Aktuell: " + ort + (Program.Get(Program.SkinIni, "Variables", "PLZ", "") != "" ? "  ·  " + Program.Get(Program.SkinIni, "Variables", "PLZ", "") : "") : "Noch kein Ort gewählt (Standard: " + ort + ")";
 
         debounce = new System.Windows.Forms.Timer { Interval = 380 };
         debounce.Tick += (s, e) => { debounce.Stop(); RunSearch(); };
@@ -848,9 +866,9 @@ class SetupForm : Form
         {
             if (picked != null)
             {
-                Program.Set(Program.SkinIni, "Variables", "Lat", picked.Lat);
-                Program.Set(Program.SkinIni, "Variables", "Lon", picked.Lon);
-                Program.Set(Program.SkinIni, "Variables", "Ort", picked.Name);
+                Program.SaveWeather(picked.Name, picked.Plz ?? "", picked.Lat, picked.Lon);
+
+
             }
             Program.SetAutostart(tAuto.Checked);
 

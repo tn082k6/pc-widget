@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.5 – 15.11.2026
+
+- **Maus auf den Pfeil = Widget kommt raus:** Kurz (¼ Sekunde) mit der Maus auf den Pfeil-Griff – das Widget erscheint. Maus wieder weg, und es geht zurück an den Rand. Klick auf den Pfeil holt es dauerhaft zurück.
+- **Postleitzahl wird gemerkt:** Die eingegebene PLZ wird mitgespeichert und im Einrichtungsfenster angezeigt („Aktuell: Neu-Anspach · 61267“).
+- **Einstellungen überleben jedes Update sicher:** Stadt, PLZ und Koordinaten liegen zusätzlich in einer eigenen Datei (`einstellungen.ini`), die bei Updates nie ersetzt wird.
+
 ## 1.4 – 15.11.2026
 
 - **Neues Logo:** App-Icon im iOS-Stil (Squircle mit Mini-Widget: Ring, Equalizer, Wertebalken); in klein ein klarer blauer Ring.

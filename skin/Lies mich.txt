@@ -1,0 +1,29 @@
+﻿PC-WIDGET  (iOS-18-Style, fÃ¼r Windows 10/11)
+============================================
+
+STARTEN
+1. Den ganzen Ordner "PC-Widget" irgendwohin entpacken (z. B. nach Dokumente).
+   Nicht direkt aus der ZIP starten!
+2. Doppelklick auf  PC-Widget.exe
+3. Beim ersten Start deine Stadt fÃ¼rs Wetter eingeben -> "Speichern & Starten".
+   Das Widget erscheint oben rechts auf dem Hauptbildschirm.
+
+Falls Windows "Der Computer wurde durch Windows geschÃ¼tzt" zeigt:
+-> "Weitere Informationen" -> "Trotzdem ausfÃ¼hren". (Die App ist selbstgebaut
+   und nicht signiert, deshalb kennt Windows sie nicht.)
+
+BEDIENUNG
+- Immer sichtbar: Uhr, Datum und was gerade auf Spotify lÃ¤uft
+  (Play/Pause, ZurÃ¼ck, Weiter; Klick aufs Cover Ã¶ffnet Spotify)
+- Maus drÃ¼ber: klappt auf -> Spotify-LautstÃ¤rke (Mausrad oder Klick),
+  Wetter, CPU / GPU / RAM / Festplatte als Ringe
+- Einstellungen (Stadt, Autostart) oder Widget beenden:
+  PC-Widget.exe nochmal doppelklicken, wÃ¤hrend das Widget lÃ¤uft.
+
+ENTFERNEN
+PC-Widget.exe Ã¶ffnen -> Haken "Mit Windows starten" raus -> Speichern,
+dann "Widget beenden" und den Ordner lÃ¶schen.
+
+Technik: Das Widget lÃ¤uft mit Rainmeter (kostenlos, Open Source, GPL v2,
+https://www.rainmeter.net, Quellcode: https://github.com/rainmeter/rainmeter).
+Wetter von open-meteo.com. Musik Ã¼ber die Windows-Mediensteuerung.

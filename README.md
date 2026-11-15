@@ -15,12 +15,17 @@ Ein Desktop-Widget für Windows 10/11 im **iOS-18-Look** (OLED-Schwarz): Uhr, Sp
 **Maus drüber → klappt sanft auf**
 - Spotify-Lautstärke (Mausrad oder Klick auf den Regler, Klick auf 🔈 = stumm)
 - Wetter mit Höchst-/Tiefstwert (open-meteo.com)
-- CPU, GPU, RAM und Festplatte als Ringe wie im iOS-Batterie-Widget (orange/rot bei hoher Last)
+- CPU, GPU, RAM und Festplatte als Ringe wie im iOS-Batterie-Widget (orange/rot bei hoher Last); Klick öffnet Task-Manager bzw. „Dieser PC“
 
-**Einrichtungsfenster** (beim ersten Start oder Doppelklick auf `PC-Widget.exe`, während das Widget läuft)
+**Seitenleiste**
+- Ist ein Programm vorne, schiebt sich das Widget an den Rand – ein kleiner Pfeil bleibt stehen, Klick holt es zurück
+- Rechtsklick aufs Widget: Einstellungen, An den Rand schieben, Widget beenden
+
+**Einrichtungsfenster** (beim ersten Start, über das Startmenü oder per Rechtsklick → Einstellungen)
 - Ort suchen per Name oder Postleitzahl (DE/AT/CH)
-- Mit Windows starten, Immer im Vordergrund
+- Mit Windows starten, Immer im Vordergrund, An den Rand bei offenen Fenstern
 - Position: oben/unten, links/rechts (unten klappt es nach oben auf)
+- Nach Updates suchen – neue Versionen werden außerdem automatisch angeboten
 
 ## Benutzen
 

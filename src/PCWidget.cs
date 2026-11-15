@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.3.0.0")]
 
 static class Program
 {
@@ -52,7 +52,12 @@ static class Program
         Installer.Unblock(Base);   // Internet-Markierung entfernen -> keine Sicherheitsabfragen bei jedem Start
         bool autostart = arg == "/autostart";
         bool running = IsRunning();
-        if (autostart) { if (!running) Start(); return; }
+        if (autostart)
+        {
+            if (!running) Start();
+            Updater.AutoCheck();   // hoechstens alle 6 h, nie wenn ein Spiel im Vollbild vorne ist
+            return;
+        }
         if (running || !File.Exists(SetupFlag)) { Application.Run(new SetupForm(running)); return; }
         Start();
     }
@@ -93,6 +98,40 @@ static class Program
         }
     }
     public static void MarkSetupDone() { File.WriteAllText(SetupFlag, DateTime.Now.ToString("s")); }
+
+    public static string TabIni { get { return Path.Combine(RmDir, @"Skins\PCWidget\Tab\Tab.ini"); } }
+
+    // Pfeil-Griff an die richtige Kante setzen (rechts/links, oben/unten wie das Widget)
+    public static void WriteTabPosition(bool right, bool bottom, string rmIni = null, string tabIni = null)
+    {
+        rmIni = rmIni ?? RmIni; tabIni = tabIni ?? TabIni;
+        const string sec = @"PCWidget\Tab";
+        Set(rmIni, sec, "Active", "1");
+        Set(rmIni, sec, "WindowX", right ? "0R" : "0");
+        Set(rmIni, sec, "AnchorX", right ? "100%" : "0%");
+        Set(rmIni, sec, "WindowY", bottom ? "97B" : "49");   // mittig neben dem kompakten Widget
+        Set(rmIni, sec, "AnchorY", bottom ? "100%" : "0%");
+        Set(rmIni, sec, "AlwaysOnTop", "2");
+        Set(rmIni, sec, "Draggable", "0");
+        Set(rmIni, sec, "KeepOnScreen", "1");
+        Set(rmIni, sec, "SnapEdges", "0");
+        Set(tabIni, "Variables", "Arrow", right ? "[\\xE76B]" : "[\\xE76C]");
+        Set(tabIni, "Variables", "TabX", right ? "0R" : "0");
+        Set(tabIni, "Variables", "TabY", bottom ? "97B" : "49");
+        Set(tabIni, "Variables", "TabAX", right ? "100%" : "0%");
+        Set(tabIni, "Variables", "TabAY", bottom ? "100%" : "0%");
+    }
+
+    // Seitenleiste an/aus: Widget versteckt sich, wenn ein Programm vorne ist, und laesst den Pfeil-Griff da
+    public static bool SidebarOn() { return Get(SkinIni, "Variables", "HideAction", "[!HideFade]").Trim() != ""; }
+    public static void SetSidebar(bool on, bool right)
+    {
+        Set(SkinIni, "Variables", "HideAction", on ? "[!HideFade]" : "");
+        Set(SkinIni, "Variables", "ShowAction", on ? "[!ShowFade]" : "");
+        Set(SkinIni, "Variables", "GrabX", right ? "0" : "268");
+        Set(TabIni, "Variables", "TabOnApp", on ? "[!ShowFade]" : "");
+        Set(TabIni, "Variables", "TabOnDesk", on ? "[!HideFade]" : "");
+    }
 
     public class Place { public string Name, Detail, Lat, Lon; }
 
@@ -148,7 +187,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.2";
+    public const string Version = "1.3";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -200,10 +239,18 @@ static class Installer
                 string rmIni = Path.Combine(rm, "Rainmeter.ini"), skin = Path.Combine(rm, @"Skins\PCWidget\PCWidget.ini"), flag = Path.Combine(rm, "einrichtung.ok");
                 byte[] oldRmIni = File.Exists(rmIni) ? File.ReadAllBytes(rmIni) : null;
                 var keep = new Dictionary<string, string>();
-                foreach (var k in new[] { "Lat", "Lon", "Ort", "PosBang" }) { var v = Read(skin, "Variables", k); if (v != null) keep[k] = v; }
+                foreach (var k in new[] { "Lat", "Lon", "Ort", "PosBang", "HideAction", "ShowAction", "GrabX" }) { var v = Read(skin, "Variables", k); if (v != null) keep[k] = v; }
                 bool wasSetup = File.Exists(flag);
 
-                if (Directory.Exists(rm)) Directory.Delete(rm, true);
+                string tabIni = Path.Combine(rm, @"Skins\PCWidget\Tab\Tab.ini");
+                var keepTab = new Dictionary<string, string>();
+                foreach (var k in new[] { "Arrow", "TabOnApp", "TabOnDesk", "TabX", "TabY", "TabAX", "TabAY" }) { var v = Read(tabIni, "Variables", k); if (v != null) keepTab[k] = v; }
+
+                for (int i = 0; Directory.Exists(rm); i++)
+                {
+                    try { Directory.Delete(rm, true); }
+                    catch { if (i > 20) throw; Thread.Sleep(300); }
+                }
                 Directory.CreateDirectory(Dir);
                 using (var s = typeof(Installer).Assembly.GetManifestResourceStream(PayloadName))
                 using (var zip = new System.IO.Compression.ZipArchive(s))
@@ -219,9 +266,22 @@ static class Installer
                 }
                 if (oldRmIni != null) File.WriteAllBytes(rmIni, oldRmIni);
                 foreach (var kv in keep) WritePrivateProfileString("Variables", kv.Key, kv.Value, skin);
+                foreach (var kv in keepTab) WritePrivateProfileString("Variables", kv.Key, kv.Value, tabIni);
+                // Aeltere Versionen kannten den Pfeil-Griff noch nicht -> passend zur Widget-Seite eintragen
+                if (Read(rmIni, @"PCWidget\Tab", "Active") == null)
+                {
+                    bool r = Read(rmIni, "PCWidget", "AnchorX") != "0%", b = Read(rmIni, "PCWidget", "AnchorY") == "100%";
+                    Program.WriteTabPosition(r, b, rmIni, tabIni);
+                    WritePrivateProfileString("Variables", "GrabX", r ? "0" : "268", skin);
+                }
                 if (wasSetup) File.WriteAllText(flag, DateTime.Now.ToString("s"));
 
-                File.Copy(Application.ExecutablePath, exe, true);
+                // alte exe kann sich nach einem Update noch beenden -> kurz warten
+                for (int i = 0; ; i++)
+                {
+                    try { File.Copy(Application.ExecutablePath, exe, true); break; }
+                    catch (IOException) { if (i > 30) throw; Thread.Sleep(300); }
+                }
                 File.WriteAllText(ver, Version);
                 Unblock(Dir);
                 CreateShortcut(StartMenuLnk, exe);
@@ -283,6 +343,141 @@ static class Installer
         if (dir.Equals(Dir, StringComparison.OrdinalIgnoreCase))
             Process.Start(new ProcessStartInfo("cmd.exe", "/c timeout /t 4 /nobreak >nul & rmdir /s /q \"" + dir + "\"") { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });
         MessageBox.Show("PC-Widget wurde entfernt.", "PC-Widget", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+}
+
+// ======================= Updates von GitHub =======================
+static class Updater
+{
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+    struct RECT { public int L, T, R, B; }
+
+    const string Repo = "tn082k6/pc-widget";
+    const string Api = "https://api.github.com/repos/" + Repo + "/releases/latest";
+    const string AllowedPrefix = "https://github.com/" + Repo + "/releases/download/";
+    static string StampFile { get { return Path.Combine(Program.Base, "update.check"); } }
+
+    public class Info { public string Version, Url, Notes; }
+
+    static Version V(string s)
+    {
+        s = (s ?? "").Trim().TrimStart('v', 'V');
+        if (!s.Contains(".")) s += ".0";
+        Version v; return System.Version.TryParse(s, out v) ? v : new Version(0, 0);
+    }
+
+    // null = kein Update. Wirft bei Netzwerkfehlern.
+    public static Info Check()
+    {
+        ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+        using (var wc = new WebClient())
+        {
+            wc.Headers["User-Agent"] = "PC-Widget/" + Installer.Version;
+            wc.Encoding = Encoding.UTF8;
+            var root = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(wc.DownloadString(Api));
+            string tag = Convert.ToString(root["tag_name"]);
+            if (V(tag) <= V(Installer.Version)) return null;
+            string url = null;
+            foreach (Dictionary<string, object> a in (System.Collections.ArrayList)root["assets"])
+                if (string.Equals(Convert.ToString(a["name"]), "PC-Widget.exe", StringComparison.OrdinalIgnoreCase)) url = Convert.ToString(a["browser_download_url"]);
+            if (url == null || !url.StartsWith(AllowedPrefix, StringComparison.OrdinalIgnoreCase)) return null;
+            string body = root.ContainsKey("body") ? Convert.ToString(root["body"]) : "";
+            body = body.Replace("**", "").Replace("`", "");
+            body = System.Text.RegularExpressions.Regex.Replace(body, @"(?m)^\s*[-*]\s+", "•  ");
+            return new Info { Version = tag.TrimStart('v', 'V'), Url = url, Notes = body.Trim() };
+        }
+    }
+
+    // Laeuft ein Spiel/Programm im Vollbild vorne?
+    public static bool FullscreenInFront()
+    {
+        try
+        {
+            IntPtr h = GetForegroundWindow(); if (h == IntPtr.Zero) return false;
+            var sb = new StringBuilder(256); GetClassName(h, sb, 256);
+            string c = sb.ToString(); if (c == "Progman" || c == "WorkerW" || c == "Shell_TrayWnd") return false;
+            RECT r; GetWindowRect(h, out r);
+            var s = Screen.FromHandle(h).Bounds;
+            return r.L <= s.Left && r.T <= s.Top && r.R >= s.Right && r.B >= s.Bottom;
+        }
+        catch { return false; }
+    }
+
+    public static void AutoCheck()
+    {
+        try
+        {
+            if (File.Exists(StampFile) && (DateTime.Now - File.GetLastWriteTime(StampFile)).TotalHours < 6) return;
+            Thread.Sleep(15000);   // nach dem Hochfahren etwas warten, bis das Internet da ist
+            Info info = Check();
+            File.WriteAllText(StampFile, DateTime.Now.ToString("s"));
+            if (info == null || FullscreenInFront()) return;
+            Application.Run(new UpdateForm(info));
+        }
+        catch { }
+    }
+
+    // Neue exe laden und starten; sie aktualisiert die Installation und behaelt die Einstellungen
+    public static void Apply(Info info)
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "PC-Widget-Update");
+        Directory.CreateDirectory(dir);
+        string file = Path.Combine(dir, "PC-Widget.exe");
+        ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+        using (var wc = new WebClient()) { wc.Headers["User-Agent"] = "PC-Widget/" + Installer.Version; wc.DownloadFile(info.Url, file); }
+        var head = new byte[2];
+        using (var fs = File.OpenRead(file)) { if (fs.Length < 1000000 || fs.Read(head, 0, 2) != 2 || head[0] != 'M' || head[1] != 'Z') throw new Exception("Download unvollständig"); }
+        Process.Start(new ProcessStartInfo(file, "/update") { UseShellExecute = false, WorkingDirectory = dir });
+        Environment.Exit(0);
+    }
+}
+
+class UpdateForm : Form
+{
+    [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int a, ref int v, int s);
+    Updater.Info info; Label status; PillButton go, later;
+
+    public UpdateForm(Updater.Info info)
+    {
+        this.info = info;
+        using (var g = CreateGraphics()) UI.Scale = g.DpiX / 96f;
+        try { using (var f = new Font(UI.FontName, 10)) if (f.Name != UI.FontName) UI.FontName = "Segoe UI"; } catch { UI.FontName = "Segoe UI"; }
+        Text = "PC-Widget Update";
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        FormBorderStyle = FormBorderStyle.None; StartPosition = FormStartPosition.Manual; TopMost = true;
+        BackColor = UI.Bg; ForeColor = UI.Text; Font = UI.F(10); DoubleBuffered = true;
+        int W = UI.S(400), L = UI.S(22), CW = W - 2 * L;
+        string notes = info.Notes ?? "";
+        var lines = notes.Split('\n'); if (lines.Length > 9) notes = string.Join("\n", lines, 0, 9).TrimEnd() + "\n…";
+        var title = new Label { Text = "Update verfügbar", Font = UI.F(15, FontStyle.Bold), AutoSize = true, Location = new Point(L, UI.S(18)), ForeColor = UI.Text };
+        var sub = new Label { Text = "PC-Widget " + info.Version + " ist da – du hast " + Installer.Version + ".", Font = UI.F(9.5f), AutoSize = true, Location = new Point(L + 1, UI.S(50)), ForeColor = UI.Sub };
+        var body = new Label { Text = notes, Font = UI.F(9), AutoSize = false, Location = new Point(L + 1, UI.S(82)), Size = new Size(CW, UI.S(170)), ForeColor = UI.Text };
+        status = new Label { Text = "Deine Einstellungen bleiben erhalten.", Font = UI.F(8.5f), AutoSize = false, TextAlign = ContentAlignment.MiddleCenter, Location = new Point(L, UI.S(258)), Size = new Size(CW, UI.S(20)), ForeColor = UI.Sub };
+        later = new PillButton { Text = "Später", Fill = Color.FromArgb(44, 44, 48), Font = UI.F(10, FontStyle.Bold), Location = new Point(L, UI.S(286)), Size = new Size((CW - UI.S(10)) / 2, UI.S(40)) };
+        go = new PillButton { Text = "Jetzt aktualisieren", Font = UI.F(10, FontStyle.Bold), Location = new Point(L + (CW + UI.S(10)) / 2, UI.S(286)), Size = new Size((CW - UI.S(10)) / 2, UI.S(40)) };
+        later.Click += (s, e) => Close();
+        go.Click += (s, e) => Go();
+        Controls.AddRange(new Control[] { title, sub, body, status, later, go });
+        ClientSize = new Size(W, UI.S(346));
+        Load += (s, e) => { var wa = Screen.PrimaryScreen.WorkingArea; Location = new Point(wa.Right - Width - UI.S(24), wa.Bottom - Height - UI.S(24)); };
+        Shown += (s, e) => { WindowState = FormWindowState.Normal; Activate(); };
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        try { int v = 2; DwmSetWindowAttribute(Handle, 33, ref v, 4); } catch { }
+        try { int v = 1; DwmSetWindowAttribute(Handle, 20, ref v, 4); } catch { }
+    }
+    protected override CreateParams CreateParams { get { var cp = base.CreateParams; cp.ClassStyle |= 0x20000; return cp; } }
+
+    void Go()
+    {
+        go.Enabled = false; later.Enabled = false; status.ForeColor = UI.Sub; status.Text = "Lade Update herunter …"; status.Refresh();
+        try { Updater.Apply(info); }
+        catch (Exception ex) { status.ForeColor = UI.Red; status.Text = "Update fehlgeschlagen: " + ex.Message; go.Enabled = true; later.Enabled = true; }
     }
 }
 
@@ -404,7 +599,7 @@ class SetupForm : Form
 
     bool running;
     TextBox search; ListBox results; Label chosen, status, searchIcon;
-    Toggle tAuto, tTop; Segmented seg; PillButton save;
+    Toggle tAuto, tTop, tSide; Segmented seg; PillButton save; Label updLink; Updater.Info update;
     Program.Place picked;
     System.Windows.Forms.Timer debounce;
     int searchId;
@@ -423,7 +618,7 @@ class SetupForm : Form
         BackColor = UI.Bg; ForeColor = UI.Text; Font = UI.F(10);
         DoubleBuffered = true; KeyPreview = true;
         int W = UI.S(440);
-        ClientSize = new Size(W, UI.S(600));
+        ClientSize = new Size(W, UI.S(692));
         int L = UI.S(24), CW = W - 2 * L;
 
         // --- Kopf ---
@@ -459,21 +654,24 @@ class SetupForm : Form
         };
 
         // --- Einstellungen ---
-        settingsCard = new Rectangle(L, UI.S(250), CW, UI.S(124));
+        settingsCard = new Rectangle(L, UI.S(250), CW, UI.S(186));
         tAuto = new Toggle { BackColor = UI.Card };
         tAuto.Location = new Point(settingsCard.Right - tAuto.Width - UI.S(14), settingsCard.Y + UI.S(15));
         tAuto.Checked = running ? Program.AutostartOn() : true;
         tTop = new Toggle { BackColor = UI.Card };
         tTop.Location = new Point(settingsCard.Right - tTop.Width - UI.S(14), settingsCard.Y + UI.S(77));
         tTop.Checked = Program.Get(Program.RmIni, "PCWidget", "AlwaysOnTop", "2") == "2";
+        tSide = new Toggle { BackColor = UI.Card };
+        tSide.Location = new Point(settingsCard.Right - tSide.Width - UI.S(14), settingsCard.Y + UI.S(139));
+        tSide.Checked = Program.SidebarOn();
 
-        seg = new Segmented { Items = new[] { "↖  Oben links", "Oben rechts  ↗", "↙  Unten links", "Unten rechts  ↘" }, Cols = 2, Font = UI.F(10, FontStyle.Bold), Location = new Point(L, UI.S(414)), Size = new Size(CW, UI.S(76)) };
+        seg = new Segmented { Items = new[] { "↖  Oben links", "Oben rechts  ↗", "↙  Unten links", "Unten rechts  ↘" }, Cols = 2, Font = UI.F(10, FontStyle.Bold), Location = new Point(L, UI.S(476)), Size = new Size(CW, UI.S(76)) };
         bool right = Program.Get(Program.RmIni, "PCWidget", "AnchorX", "100%") != "0%";
         bool bottom = Program.Get(Program.RmIni, "PCWidget", "AnchorY", "0%") == "100%";
         seg.Selected = (bottom ? 2 : 0) + (right ? 1 : 0);
 
         // --- Knoepfe ---
-        int by = ClientSize.Height - UI.S(66);
+        int by = ClientSize.Height - UI.S(96);
         status = new Label { AutoSize = false, Location = new Point(L, by - UI.S(28)), Size = new Size(CW, UI.S(22)), ForeColor = UI.Sub, Font = UI.F(9), TextAlign = ContentAlignment.MiddleCenter };
         save = new PillButton { Text = running ? "Speichern" : "Speichern & Starten", Font = UI.F(10.5f, FontStyle.Bold) };
         if (running)
@@ -486,13 +684,20 @@ class SetupForm : Form
         else { save.Location = new Point(L, by); save.Size = new Size(CW, UI.S(44)); }
         save.Click += (s, e) => Save();
 
-        Controls.AddRange(new Control[] { results, searchIcon, search, chosen, tAuto, tTop, seg, status, save });
+        // Fusszeile: Version + Update-Suche
+        updLink = new Label { Text = "Version " + Installer.Version + "  ·  Nach Updates suchen", AutoSize = false, TextAlign = ContentAlignment.MiddleCenter, Location = new Point(L, ClientSize.Height - UI.S(40)), Size = new Size(CW, UI.S(24)), ForeColor = UI.Sub, Font = UI.F(9), Cursor = Cursors.Hand };
+        updLink.MouseEnter += (s, e) => { if (update == null) updLink.ForeColor = UI.Text; };
+        updLink.MouseLeave += (s, e) => { if (update == null) updLink.ForeColor = UI.Sub; };
+        updLink.Click += (s, e) => { if (update != null) { new UpdateForm(update).ShowDialog(this); } else CheckUpdate(true); };
+        Controls.Add(updLink);
+
+        Controls.AddRange(new Control[] { results, searchIcon, search, chosen, tAuto, tTop, tSide, seg, status, save });
         results.BringToFront();
 
         MouseDown += (s, e) => { if (e.Button == MouseButtons.Left && e.Y < UI.S(110)) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };
         KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape && !results.Visible) Close(); };
         Load += (s, e) => { var wa = Screen.FromPoint(Cursor.Position).WorkingArea; Location = new Point(wa.X + (wa.Width - Width) / 2, wa.Y + (wa.Height - Height) / 2); };
-        Shown += (s, e) => { if (!running) search.Focus(); else ActiveControl = null; };
+        Shown += (s, e) => { WindowState = FormWindowState.Normal; Activate(); if (!running) search.Focus(); else ActiveControl = null; CheckUpdate(false); };
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -524,7 +729,10 @@ class SetupForm : Form
         using (var p = new Pen(UI.Line)) g.DrawLine(p, settingsCard.X + UI.S(16), settingsCard.Y + UI.S(62), settingsCard.Right, settingsCard.Y + UI.S(62));
         using (var f = UI.F(11)) TextRenderer.DrawText(g, "Immer im Vordergrund", f, new Point(settingsCard.X + UI.S(16), settingsCard.Y + UI.S(72)), UI.Text);
         using (var f = UI.F(8.5f)) TextRenderer.DrawText(g, "Auch über Spielen im randlosen Fenster", f, new Point(settingsCard.X + UI.S(16), settingsCard.Y + UI.S(95)), UI.Sub);
-        Section(g, "POSITION AUF DEM HAUPTBILDSCHIRM", UI.S(390));
+        using (var p = new Pen(UI.Line)) g.DrawLine(p, settingsCard.X + UI.S(16), settingsCard.Y + UI.S(124), settingsCard.Right, settingsCard.Y + UI.S(124));
+        using (var f = UI.F(11)) TextRenderer.DrawText(g, "An den Rand bei offenen Fenstern", f, new Point(settingsCard.X + UI.S(16), settingsCard.Y + UI.S(134)), UI.Text);
+        using (var f = UI.F(8.5f)) TextRenderer.DrawText(g, "Pfeil am Rand – Klick holt das Widget zurück", f, new Point(settingsCard.X + UI.S(16), settingsCard.Y + UI.S(157)), UI.Sub);
+        Section(g, "POSITION AUF DEM HAUPTBILDSCHIRM", UI.S(452));
     }
     void Section(Graphics g, string t, int y) { using (var f = UI.F(8, FontStyle.Bold)) TextRenderer.DrawText(g, t, f, new Point(UI.S(26), y), UI.Sub); }
     void Card(Graphics g, Rectangle r) { using (var p = UI.Round(r, UI.S(12))) using (var b = new SolidBrush(UI.Card)) g.FillPath(b, p); }
@@ -540,6 +748,26 @@ class SetupForm : Form
         using (var f = UI.F(10.5f, FontStyle.Bold)) TextRenderer.DrawText(g, pl.Name, f, new Point(e.Bounds.X + UI.S(44), e.Bounds.Y + UI.S(5)), UI.Text);
         using (var f = UI.F(9)) TextRenderer.DrawText(g, pl.Detail, f, new Point(e.Bounds.X + UI.S(44), e.Bounds.Y + UI.S(25)), UI.Sub);
         if (e.Index < results.Items.Count - 1) using (var p = new Pen(UI.Line)) g.DrawLine(p, e.Bounds.X + UI.S(44), e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+    }
+
+    void CheckUpdate(bool manual)
+    {
+        if (manual) { updLink.ForeColor = UI.Sub; updLink.Text = "Suche nach Updates …"; }
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            Updater.Info info = null; bool failed = false;
+            try { info = Updater.Check(); } catch { failed = true; }
+            try
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    update = info;
+                    if (info != null) { updLink.ForeColor = UI.Blue; updLink.Text = "Update " + info.Version + " verfügbar – jetzt installieren"; }
+                    else if (manual) { updLink.ForeColor = failed ? UI.Red : UI.Green; updLink.Text = failed ? "Keine Verbindung zu GitHub" : "\u2713  Du hast die neueste Version (" + Installer.Version + ")"; }
+                }));
+            }
+            catch { }
+        });
     }
 
     void RunSearch()
@@ -607,6 +835,8 @@ class SetupForm : Form
             Program.Set(Program.RmIni, "PCWidget", "AnchorY", ay);
             // Unten: beim Aufklappen Unterkante festhalten -> Widget waechst nach oben
             Program.Set(Program.SkinIni, "Variables", "PosBang", bottom ? "[!SetWindowPosition " + wx + " " + wy + " " + ax + " " + ay + "]" : "");
+            Program.SetSidebar(tSide.Checked, right);
+            Program.WriteTabPosition(right, bottom);
             Program.MarkSetupDone();
             Program.Start();
             Close();

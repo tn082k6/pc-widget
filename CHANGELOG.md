@@ -1,5 +1,23 @@
 # Änderungen
 
+## 1.3 – 15.11.2026
+
+**Automatische Updates**
+- Die App schaut beim Windows-Start (höchstens alle 6 Stunden) auf GitHub nach neuen Versionen und fragt dann „Update verfügbar – Jetzt aktualisieren / Später“.
+- Läuft gerade ein **Spiel im Vollbild**, wird nicht gefragt – dann beim nächsten Mal.
+- Einstellungen (Stadt, Position, Autostart …) bleiben beim Update erhalten.
+- Im Einrichtungsfenster: „Version 1.3 · Nach Updates suchen“.
+- Hinweis: Wer noch 1.2 hat, muss 1.3 einmal selbst installieren – ab dann kommen Updates automatisch.
+
+**Seitenleiste**
+- Ist ein Programm im Vordergrund, schiebt sich das Widget weg und lässt am Bildschirmrand einen kleinen **Pfeil-Griff** stehen. Klick darauf holt es zurück. Auf dem Desktop ist es ganz normal da.
+- Kleiner **Griff an der Widget-Kante** zum Wegschieben per Hand.
+- Im Einrichtungsfenster an-/abschaltbar: „An den Rand bei offenen Fenstern“.
+
+**Beenden & Menü**
+- **Rechtsklick aufs Widget:** Einstellungen, An den Rand schieben, **Widget beenden**.
+- Im Einrichtungsfenster gibt es „Widget beenden“, solange das Widget läuft.
+
 ## 1.2 – 15.11.2026
 
 **Einfacher zu verschicken**

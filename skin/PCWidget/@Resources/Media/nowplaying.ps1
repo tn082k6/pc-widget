@@ -62,7 +62,29 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 namespace PCW {
+  // Welches Fenster ist vorne? "app" = normales Programm, "desk" = Desktop/Widget, "" = egal (Taskleiste, Startmenue, Alt-Tab)
+  public static class Fg {
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+    public static string State() {
+      IntPtr h = GetForegroundWindow();
+      if (h == IntPtr.Zero) return "";
+      var sb = new StringBuilder(256); GetClassName(h, sb, 256); string c = sb.ToString();
+      if (c == "Progman" || c == "WorkerW") return "desk";
+      if (c == "Shell_TrayWnd" || c == "Shell_SecondaryTrayWnd" || c == "NotifyIconOverflowWindow" || c == "TopLevelWindowForOverflowXamlIsland"
+          || c == "XamlExplorerHostIslandWindow" || c == "ForegroundStaging" || c == "MultitaskingViewFrame" || c == "TaskSwitcherWnd" || c == "#32768") return "";
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      try {
+        string n = Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant();
+        if (n == "rainmeter") return "desk";
+        if (n == "startmenuexperiencehost" || n == "searchhost" || n == "searchapp" || n == "shellexperiencehost" || n == "lockapp") return "";
+      } catch { }
+      return "app";
+    }
+  }
   [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
   [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface IMMDeviceEnumerator { int _a(); [PreserveSig] int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice dev); }
@@ -166,7 +188,13 @@ function Get-CoverColor($path) {
     } catch { return $defaultColor }
 }
 
+$fgState = 'desk'
+
 while ($true) {
+    # Aktives Fenster pruefen (4x pro Sekunde), bei Wechsel sofort melden
+    try { $fgNow = [PCW.Fg]::State() } catch { $fgNow = '' }
+    if ($fgNow -and $fgNow -ne $fgState) { $fgState = $fgNow; $tick = 0 }
+
     # Klick-Befehle aus Rainmeter
     # Datei muss existieren, sonst kann Rainmeter nicht reinschreiben
     if (-not (Test-Path $cmdFile)) { [System.IO.File]::WriteAllText($cmdFile, "[Cmd]`r`nAction=`r`n") }
@@ -231,7 +259,7 @@ while ($true) {
         if ($lastKey -eq '') { $coverPath = ''; $coverColor = $defaultColor }
         try { $volume = [PCW.AppVolume]::Get('Spotify') } catch { $volume = -1 }
         if ($Gpu) { Update-Gpu }
-        $line = '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|' -f ($title -replace '\|', '/'), ($artist -replace '\|', '/'), $status, ($pct.ToString([Globalization.CultureInfo]::InvariantCulture)), $coverPath, $coverColor, $posTxt, $durTxt, $volume, $gpuPct
+        $line = '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}|' -f ($title -replace '\|', '/'), ($artist -replace '\|', '/'), $status, ($pct.ToString([Globalization.CultureInfo]::InvariantCulture)), $coverPath, $coverColor, $posTxt, $durTxt, $volume, $gpuPct, $fgState
         [System.IO.File]::WriteAllText($outFile, $line, $utf8)
     }
     $tick--

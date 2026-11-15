@@ -69,19 +69,51 @@ namespace PCW {
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int idx);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out int v, int s);
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    struct RECT { public int L, T, R, B; }
+
+    static bool ShellClass(string c) {
+      return c == "Progman" || c == "WorkerW" || c == "Shell_TrayWnd" || c == "Shell_SecondaryTrayWnd" || c == "NotifyIconOverflowWindow"
+          || c == "TopLevelWindowForOverflowXamlIsland" || c == "XamlExplorerHostIslandWindow" || c == "ForegroundStaging"
+          || c == "MultitaskingViewFrame" || c == "TaskSwitcherWnd" || c == "#32768" || c == "Windows.UI.Core.CoreWindow";
+    }
+    static string ProcName(IntPtr h) {
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      try { return Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant(); } catch { return ""; }
+    }
+
+    // Gibt es noch irgendein sichtbares, nicht minimiertes Programmfenster?
+    static bool AnyAppWindow() {
+      bool found = false;
+      EnumWindows((h, l) => {
+        if (!IsWindowVisible(h) || IsIconic(h) || GetWindow(h, 4) != IntPtr.Zero) return true;     // unsichtbar, minimiert, Unterfenster
+        if ((GetWindowLong(h, -20) & 0x80) != 0) return true;                                        // Werkzeugfenster
+        int cloaked; if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) return true; // versteckte Store-Apps
+        RECT r; GetWindowRect(h, out r); if (r.R - r.L < 120 || r.B - r.T < 80) return true;
+        var sb = new StringBuilder(256); GetClassName(h, sb, 256); if (ShellClass(sb.ToString())) return true;
+        string n = ProcName(h); if (n == "rainmeter" || n == "textinputhost" || n == "shellexperiencehost" || n == "startmenuexperiencehost" || n == "searchhost") return true;
+        found = true; return false;
+      }, IntPtr.Zero);
+      return found;
+    }
+
     public static string State() {
       IntPtr h = GetForegroundWindow();
-      if (h == IntPtr.Zero) return "";
-      var sb = new StringBuilder(256); GetClassName(h, sb, 256); string c = sb.ToString();
+      string c = "";
+      if (h != IntPtr.Zero) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); c = sb.ToString(); }
       if (c == "Progman" || c == "WorkerW") return "desk";
-      if (c == "Shell_TrayWnd" || c == "Shell_SecondaryTrayWnd" || c == "NotifyIconOverflowWindow" || c == "TopLevelWindowForOverflowXamlIsland"
-          || c == "XamlExplorerHostIslandWindow" || c == "ForegroundStaging" || c == "MultitaskingViewFrame" || c == "TaskSwitcherWnd" || c == "#32768") return "";
-      uint pid; GetWindowThreadProcessId(h, out pid);
-      try {
-        string n = Process.GetProcessById((int)pid).ProcessName.ToLowerInvariant();
-        if (n == "rainmeter") return "desk";
-        if (n == "startmenuexperiencehost" || n == "searchhost" || n == "searchapp" || n == "shellexperiencehost" || n == "lockapp") return "";
-      } catch { }
+      // unklar (nichts vorne, Taskleiste, Startmenue, Alt-Tab): Desktop, wenn kein Programmfenster mehr offen ist
+      if (h == IntPtr.Zero || ShellClass(c)) return AnyAppWindow() ? "" : "desk";
+      string n = ProcName(h);
+      if (n == "rainmeter") return "desk";
+      if (n == "startmenuexperiencehost" || n == "searchhost" || n == "searchapp" || n == "shellexperiencehost" || n == "lockapp") return AnyAppWindow() ? "" : "desk";
       return "app";
     }
   }

@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.3.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.4.0.0")]
 
 static class Program
 {
@@ -187,7 +187,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.3";
+    public const string Version = "1.4";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -533,27 +533,51 @@ class PillButton : Control
 
 class Toggle : Control
 {
-    bool on; float anim; System.Windows.Forms.Timer t;
+    bool on, hover, down; float anim, press; System.Windows.Forms.Timer t;
     public event EventHandler Changed;
     public bool Checked { get { return on; } set { on = value; anim = on ? 1 : 0; Invalidate(); } }
     public Toggle()
     {
-        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-        Cursor = Cursors.Hand; Size = new Size(UI.S(51), UI.S(31));
-        t = new System.Windows.Forms.Timer { Interval = 12 };
-        t.Tick += (s, e) => { float target = on ? 1 : 0; anim += (target - anim) * 0.35f; if (Math.Abs(target - anim) < 0.02f) { anim = target; t.Stop(); } Invalidate(); };
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
+        Cursor = Cursors.Hand; Size = new Size(UI.S(51), UI.S(31)); TabStop = true;
+        t = new System.Windows.Forms.Timer { Interval = 10 };
+        t.Tick += (s, e) =>
+        {
+            float target = on ? 1 : 0, pt = down ? 1 : 0;
+            anim += (target - anim) * 0.28f; press += (pt - press) * 0.35f;
+            bool done = Math.Abs(target - anim) < 0.01f && Math.Abs(pt - press) < 0.01f;
+            if (done) { anim = target; press = pt; t.Stop(); }
+            Invalidate();
+        };
     }
-    protected override void OnClick(EventArgs e) { on = !on; t.Start(); if (Changed != null) Changed(this, e); base.OnClick(e); }
+    // umschalten (auch von aussen, z. B. Klick auf die Beschriftung)
+    public void Flip() { on = !on; t.Start(); if (Changed != null) Changed(this, EventArgs.Empty); }
+    protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { hover = false; down = false; t.Start(); base.OnMouseLeave(e); }
+    protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { down = true; t.Start(); Focus(); } base.OnMouseDown(e); }
+    protected override void OnMouseUp(MouseEventArgs e) { if (down && ClientRectangle.Contains(e.Location)) Flip(); down = false; t.Start(); base.OnMouseUp(e); }
+    protected override void OnKeyDown(KeyEventArgs e) { if (e.KeyCode == Keys.Space || e.KeyCode == Keys.Enter) { Flip(); e.Handled = true; } base.OnKeyDown(e); }
+    protected override void OnGotFocus(EventArgs e) { Invalidate(); base.OnGotFocus(e); }
+    protected override void OnLostFocus(EventArgs e) { Invalidate(); base.OnLostFocus(e); }
+
+    static Color Mix(Color a, Color b, float k) { return Color.FromArgb((int)(a.R + (b.R - a.R) * k), (int)(a.G + (b.G - a.G) * k), (int)(a.B + (b.B - a.B) * k)); }
+
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics; UI.Hq(g); g.Clear(Parent.BackColor);
-        Color off = Color.FromArgb(57, 57, 61);
-        Color c = Color.FromArgb((int)(off.R + (UI.Green.R - off.R) * anim), (int)(off.G + (UI.Green.G - off.G) * anim), (int)(off.B + (UI.Green.B - off.B) * anim));
-        float h = Height - 1, w = Width - 1;
+        var g = e.Graphics; UI.Hq(g);
+        g.Clear(BackColor);   // Hintergrund = Kartenfarbe, kein dunkler Kasten mehr
+        float w = Width - 1, h = Height - 1;
+        // Spur: grau -> gruen (iOS)
+        Color off = hover ? Color.FromArgb(72, 72, 76) : Color.FromArgb(62, 62, 66);
+        Color c = Mix(off, hover ? ControlPaint.Light(UI.Green, 0.1f) : UI.Green, anim);
         using (var p = UI.Round(new RectangleF(0, 0, w, h), h / 2)) using (var b = new SolidBrush(c)) g.FillPath(b, p);
-        float k = h - 4; float x = 2 + (w - k - 4) * anim;
-        using (var sh = new SolidBrush(Color.FromArgb(40, 0, 0, 0))) g.FillEllipse(sh, x, 3, k, k);
-        using (var b = Brushes.White.Clone() as Brush) g.FillEllipse(b, x, 2, k, k);
+        // Knopf: beim Druecken etwas breiter (wie iOS)
+        float m = UI.S(2.5f), k = h - 2 * m, stretch = k * 0.22f * press;
+        float x = m + (w - k - 2 * m - stretch) * anim;
+        var knob = new RectangleF(x, m, k + stretch, k);
+        using (var sh = new SolidBrush(Color.FromArgb(55, 0, 0, 0))) using (var p = UI.Round(new RectangleF(knob.X, knob.Y + UI.S(1.5f), knob.Width, knob.Height), k / 2)) g.FillPath(sh, p);
+        using (var p = UI.Round(knob, k / 2)) using (var b = new SolidBrush(Color.White)) g.FillPath(b, p);
+        if (Focused && ShowFocusCues) using (var pen = new Pen(Color.FromArgb(160, UI.Blue), UI.S(1.5f))) using (var p = UI.Round(new RectangleF(0.5f, 0.5f, w - 1, h - 1), h / 2)) g.DrawPath(pen, p);
     }
 }
 
@@ -695,6 +719,15 @@ class SetupForm : Form
         results.BringToFront();
 
         MouseDown += (s, e) => { if (e.Button == MouseButtons.Left && e.Y < UI.S(110)) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };
+        // Ganze Zeile anklickbar (wie bei iOS): Klick auf die Beschriftung schaltet den Schalter
+        Func<Point, Toggle> rowAt = pt =>
+        {
+            if (!settingsCard.Contains(pt)) return null;
+            int y = pt.Y - settingsCard.Y;
+            return y < UI.S(62) ? tAuto : y < UI.S(124) ? tTop : tSide;
+        };
+        MouseMove += (s, e) => { Cursor = rowAt(e.Location) != null ? Cursors.Hand : Cursors.Default; };
+        MouseClick += (s, e) => { var tg = rowAt(e.Location); if (tg != null && e.Button == MouseButtons.Left) tg.Flip(); };
         KeyDown += (s, e) => { if (e.KeyCode == Keys.Escape && !results.Visible) Close(); };
         Load += (s, e) => { var wa = Screen.FromPoint(Cursor.Position).WorkingArea; Location = new Point(wa.X + (wa.Width - Width) / 2, wa.Y + (wa.Height - Height) / 2); };
         Shown += (s, e) => { WindowState = FormWindowState.Normal; Activate(); if (!running) search.Focus(); else ActiveControl = null; CheckUpdate(false); };

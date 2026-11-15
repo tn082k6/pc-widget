@@ -1,5 +1,13 @@
 # Änderungen
 
+## 1.4 – 15.11.2026
+
+- **Neues Logo:** App-Icon im iOS-Stil (Squircle mit Mini-Widget: Ring, Equalizer, Wertebalken); in klein ein klarer blauer Ring.
+- **Schalter überarbeitet:** kein dunkler Kasten mehr um die Schalter, weichere Animation, Knopf wird beim Drücken breiter (wie iOS), ganze Zeile anklickbar, per Tastatur bedienbar.
+- **Zurückholen zuverlässiger:** Das Widget kommt jetzt auch zurück, wenn man mit Win+D oder über die Taskleiste auf den Desktop geht (vorher blieb es manchmal weg).
+- **Schneller:** Widget und Pfeil-Griff reagieren ca. 4× pro Sekunde statt 1×.
+- Fenster öffnen sich immer normal im Vordergrund (nicht minimiert).
+
 ## 1.3 – 15.11.2026
 
 **Automatische Updates**

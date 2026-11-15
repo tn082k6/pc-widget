@@ -24,9 +24,11 @@ Ein Desktop-Widget für Windows 10/11 im **iOS-18-Look** (OLED-Schwarz): Uhr, Sp
 
 ## Benutzen
 
-1. Unter **[Releases](../../releases)** `PC-Widget.zip` herunterladen.
-2. Den ganzen Ordner entpacken (nicht aus der ZIP heraus starten).
-3. `PC-Widget.exe` doppelklicken, Stadt eingeben, **Speichern & Starten**.
+1. Unter **[Releases](../../releases)** `PC-Widget.exe` (oder `PC-Widget.zip`) herunterladen.
+2. `PC-Widget.exe` doppelklicken – auch direkt aus der ZIP heraus. Die App richtet sich beim ersten Start selbst ein (nach `%LOCALAPPDATA%\PC-Widget`, mit Startmenü-Eintrag).
+3. Stadt eingeben, **Speichern & Starten**.
+
+Einstellungen später über *Startmenü → PC-Widget*. Entfernen über *Einstellungen → Apps → Installierte Apps → PC-Widget*.
 
 > Windows zeigt eventuell „Der Computer wurde durch Windows geschützt“, weil die App nicht signiert ist → *Weitere Informationen* → *Trotzdem ausführen*.
 
@@ -40,7 +42,7 @@ Voraussetzung: [Rainmeter 4.5](https://www.rainmeter.net) installiert.
 .\build\build.ps1
 ```
 
-Das Skript kompiliert `src/PCWidget.cs` (mit dem C#-Compiler aus dem .NET Framework), kopiert Rainmeter als portable Version dazu und legt `dist/PC-Widget.zip` an.
+Das Skript kompiliert `src/PCWidget.cs` (mit dem C#-Compiler aus dem .NET Framework), packt Rainmeter (portabel) und das Widget in die exe und legt `dist/PC-Widget.exe` und `dist/PC-Widget.zip` an.
 
 ## Aufbau
 

@@ -15,6 +15,11 @@ BEDIENUNG
 - Klick auf CPU/GPU/RAM = Task-Manager, Klick auf C: = Dieser PC
 - Einstellungen: Startmenü -> PC-Widget (oder PC-Widget.exe nochmal starten)
 
+FPS
+Im Einrichtungsfenster "FPS anzeigen" einschalten. Windows fragt einmal nach Admin-Rechten
+(die Bildrate eines Spiels gibt Windows nur so heraus). Gemessen wird mit PresentMon
+von Intel (MIT-Lizenz, liegt im Ordner Tools).
+
 ENTFERNEN
 Einstellungen -> Apps -> Installierte Apps -> PC-Widget -> Deinstallieren.
 

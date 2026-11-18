@@ -41,6 +41,7 @@ static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         string arg = args.Length > 0 ? args[0].ToLowerInvariant() : "";
+        if (arg == "/fps") { Fps.RunWorker(); return; }
         if (!File.Exists(RmExe) || !File.Exists(SkinIni))
         {
             // Einzelne exe (z. B. frisch heruntergeladen): sich selbst einrichten
@@ -150,7 +151,7 @@ static class Program
     // So ueberleben sie jedes Update.
     public class Cfg
     {
-        public bool Top = true, Sidebar = true, Game = true;
+        public bool Top = true, Sidebar = true, Game = true, Fps = false;
         public int Corner = 1;      // 0 = oben links, 1 = oben rechts, 2 = unten links, 3 = unten rechts
         public int Monitor = 0;     // 0 = Hauptbildschirm, sonst Nummer (1, 2, 3 ...)
         public string Lang = "de";
@@ -169,7 +170,7 @@ static class Program
     {
         var c = new Cfg();
         Func<string, string, string> g = (k, d) => Rd(sf, "App", k) ?? d;
-        c.Top = g("Vordergrund", "1") == "1"; c.Sidebar = g("Seitenleiste", "1") == "1"; c.Game = g("Spielmodus", "1") == "1";
+        c.Top = g("Vordergrund", "1") == "1"; c.Sidebar = g("Seitenleiste", "1") == "1"; c.Game = g("Spielmodus", "1") == "1"; c.Fps = g("FPS", "0") == "1";
         int.TryParse(g("Ecke", "1"), out c.Corner); int.TryParse(g("Monitor", "0"), out c.Monitor);
         c.Lang = g("Sprache", "de") == "en" ? "en" : "de";
         return c;
@@ -191,7 +192,7 @@ static class Program
     public static void SaveCfg(Cfg c, string sf)
     {
         Set(sf, "App", "Vordergrund", c.Top ? "1" : "0"); Set(sf, "App", "Seitenleiste", c.Sidebar ? "1" : "0");
-        Set(sf, "App", "Spielmodus", c.Game ? "1" : "0"); Set(sf, "App", "Ecke", c.Corner.ToString());
+        Set(sf, "App", "Spielmodus", c.Game ? "1" : "0"); Set(sf, "App", "FPS", c.Fps ? "1" : "0"); Set(sf, "App", "Ecke", c.Corner.ToString());
         Set(sf, "App", "Monitor", c.Monitor.ToString()); Set(sf, "App", "Sprache", c.Lang);
     }
 
@@ -364,6 +365,7 @@ static class Installer
                     }
                     catch { }
                 }
+                Fps.StopWorker(Dir);   // FPS-Messung anhalten, sonst sind Dateien gesperrt
                 // Einstellungen einer alten Version merken
                 string rmIni = Path.Combine(rm, "Rainmeter.ini"), skin = Path.Combine(rm, @"Skins\PCWidget\PCWidget.ini"), flag = Path.Combine(rm, "einrichtung.ok");
                 byte[] oldRmIni = File.Exists(rmIni) ? File.ReadAllBytes(rmIni) : null;
@@ -402,6 +404,7 @@ static class Installer
                     var c = Program.HasCfg(sf0) ? Program.LoadCfg(sf0) : Program.CfgFromFiles(rmIni, skin);
                     Program.ApplyCfg(c, rm);
                     Program.SaveCfg(c, sf0);
+                    if (c.Fps && Fps.TaskExists()) Fps.StartTask(Dir);
                 }
                 if (wasSetup) File.WriteAllText(flag, DateTime.Now.ToString("s"));
                 // Wetter-Ort aus der eigenen Einstellungsdatei wiederherstellen (hat Vorrang)
@@ -477,6 +480,7 @@ static class Installer
     {
         if (MessageBox.Show("PC-Widget wirklich entfernen?", "PC-Widget", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         Program.Quit(true);
+        Fps.Remove();
         Program.SetAutostart(false);
         try { if (File.Exists(StartMenuLnk)) File.Delete(StartMenuLnk); } catch { }
         try { Registry.CurrentUser.DeleteSubKeyTree(UninstKey, false); } catch { }
@@ -486,6 +490,136 @@ static class Installer
             Process.Start(new ProcessStartInfo("cmd.exe", "/c timeout /t 4 /nobreak >nul & rmdir /s /q \"" + dir + "\"") { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden });
         MessageBox.Show("PC-Widget wurde entfernt.", "PC-Widget", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
+}
+
+
+// ======================= FPS-Messung (PresentMon, braucht Admin) =======================
+// Laeuft als "PC-Widget.exe /fps" ueber eine geplante Aufgabe mit hoechsten Rechten.
+// Zaehlt die Bilder pro Sekunde des Programms im Vordergrund und schreibt sie in Media\fps.txt.
+static class Fps
+{
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+
+    public const string TaskName = "PC-Widget FPS";
+    public static string Dir { get { return Program.Base.TrimEnd('\\'); } }
+    public static string PmExe { get { return Path.Combine(Dir, @"Tools\PresentMon.exe"); } }
+    public static string RunFlag { get { return Path.Combine(Dir, "fps.running"); } }
+    public static string StopFlag { get { return Path.Combine(Dir, "fps.stop"); } }
+    static string OutFile { get { return Path.Combine(Program.RmDir, @"Skins\PCWidget\@Resources\Media\fps.txt"); } }
+
+    static readonly object sync = new object();
+    static readonly Dictionary<int, Queue<long>> frames = new Dictionary<int, Queue<long>>();
+    static int colPid = -1;
+    static Stopwatch clock = Stopwatch.StartNew();
+
+    static void OnLine(string line)
+    {
+        if (string.IsNullOrEmpty(line)) return;
+        var parts = line.Split(',');
+        if (colPid < 0) { colPid = Array.IndexOf(parts, "ProcessID"); return; }   // Kopfzeile
+        int pid; if (colPid >= parts.Length || !int.TryParse(parts[colPid], out pid)) return;
+        long now = clock.ElapsedMilliseconds;
+        lock (sync)
+        {
+            Queue<long> q; if (!frames.TryGetValue(pid, out q)) { q = new Queue<long>(); frames[pid] = q; }
+            q.Enqueue(now); while (q.Count > 0 && now - q.Peek() > 1000) q.Dequeue();
+        }
+    }
+
+    static int FpsOf(int pid)
+    {
+        long now = clock.ElapsedMilliseconds;
+        lock (sync)
+        {
+            Queue<long> q; if (!frames.TryGetValue(pid, out q)) return 0;
+            while (q.Count > 0 && now - q.Peek() > 1000) q.Dequeue();
+            return q.Count;
+        }
+    }
+
+    static bool WidgetRunning()
+    {
+        foreach (var p in Process.GetProcessesByName("Rainmeter"))
+            try { if (p.MainModule.FileName.StartsWith(Dir, StringComparison.OrdinalIgnoreCase)) return true; } catch { }
+        return false;
+    }
+
+    static bool Enabled() { return !Program.HasCfg(Program.SettingsFile) || Program.LoadCfg(Program.SettingsFile).Fps; }
+
+    public static void RunWorker()
+    {
+        bool created; var mutex = new Mutex(true, "Local\\PCWidgetFpsWorker", out created);
+        if (!created) return;
+        try { File.WriteAllText(RunFlag, Process.GetCurrentProcess().Id.ToString()); } catch { }
+        Process pm = null;
+        try
+        {
+            while (!File.Exists(StopFlag))
+            {
+                bool want = File.Exists(PmExe) && WidgetRunning() && Enabled();
+                if (want && (pm == null || pm.HasExited))
+                {
+                    colPid = -1;
+                    var si = new ProcessStartInfo(PmExe, "--output_stdout --no_csv --no_console_stats --v1_metrics --no_track_display --no_track_input --no_track_gpu --session_name PCWidgetFPS --stop_existing_session")
+                    { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WindowStyle = ProcessWindowStyle.Hidden };
+                    pm = new Process { StartInfo = si };
+                    pm.OutputDataReceived += (s, e) => OnLine(e.Data);
+                    pm.ErrorDataReceived += (s, e) => { };
+                    try { pm.Start(); pm.BeginOutputReadLine(); pm.BeginErrorReadLine(); } catch { pm = null; }
+                }
+                if (!want && pm != null) { try { if (!pm.HasExited) pm.Kill(); } catch { } pm = null; try { File.Delete(OutFile); } catch { } }
+                if (want)
+                {
+                    uint fg; GetWindowThreadProcessId(GetForegroundWindow(), out fg);
+                    try { File.WriteAllText(OutFile, FpsOf((int)fg).ToString()); } catch { }
+                }
+                Thread.Sleep(want ? 1000 : 5000);
+            }
+        }
+        finally
+        {
+            try { if (pm != null && !pm.HasExited) pm.Kill(); } catch { }
+            try { File.Delete(OutFile); } catch { }
+            try { File.Delete(RunFlag); } catch { }
+            mutex.ReleaseMutex();
+        }
+    }
+
+    static int Schtasks(string args, bool elevated)
+    {
+        var si = new ProcessStartInfo("schtasks.exe", args) { CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
+        if (elevated) { si.UseShellExecute = true; si.Verb = "runas"; } else si.UseShellExecute = false;
+        using (var p = Process.Start(si)) { p.WaitForExit(20000); return p.HasExited ? p.ExitCode : -1; }
+    }
+
+    public static bool TaskExists() { try { return Schtasks("/query /tn \"" + TaskName + "\"", false) == 0; } catch { return false; } }
+
+    // Legt die Aufgabe an (eine Admin-Abfrage) und startet die Messung. false = abgelehnt/fehlgeschlagen.
+    public static bool Install(string exe)
+    {
+        try
+        {
+            string tr = "\\\"" + exe + "\\\" /fps";
+            int rc = Schtasks("/create /tn \"" + TaskName + "\" /tr \"" + tr + "\" /sc onlogon /rl highest /f", true);
+            if (rc != 0) return false;
+            StartTask(); return true;
+        }
+        catch { return false; }   // z. B. Admin-Abfrage abgelehnt
+    }
+
+    public static void StartTask(string dir = null) { try { File.Delete(Path.Combine(dir ?? Dir, "fps.stop")); } catch { } try { Schtasks("/run /tn \"" + TaskName + "\"", false); } catch { } }
+
+    // Messung anhalten (z. B. vor einem Update) und warten, bis sie beendet ist
+    public static void StopWorker(string dir)
+    {
+        string run = Path.Combine(dir, "fps.running"), stop = Path.Combine(dir, "fps.stop");
+        if (!File.Exists(run)) return;
+        try { File.WriteAllText(stop, "1"); } catch { return; }
+        for (int i = 0; i < 40 && File.Exists(run); i++) Thread.Sleep(200);
+    }
+
+    public static void Remove() { try { StopWorker(Dir); if (TaskExists()) Schtasks("/delete /tn \"" + TaskName + "\" /f", true); } catch { } }
 }
 
 // ======================= Updates von GitHub =======================
@@ -782,7 +916,7 @@ class SetupForm : Form
     bool running;
     Page page; Panel bar;
     TextBox search; ListBox results; Label chosen, status, searchIcon, updLink;
-    Toggle tAuto, tTop, tSide, tGame; Segmented segPos, segMon, segLang; PillButton save, stop;
+    Toggle tAuto, tTop, tSide, tGame, tFps; Segmented segPos, segMon, segLang; PillButton save, stop;
     Program.Place picked; Updater.Info update;
     System.Windows.Forms.Timer debounce; int searchId;
     Icon appIcon;
@@ -866,7 +1000,8 @@ class SetupForm : Form
         tTop = new Toggle { BackColor = UI.Card, Checked = cfg.Top };
         tSide = new Toggle { BackColor = UI.Card, Checked = cfg.Sidebar };
         tGame = new Toggle { BackColor = UI.Card, Checked = cfg.Game };
-        rowToggles = new[] { tAuto, tTop, tSide, tGame };
+        tFps = new Toggle { BackColor = UI.Card, Checked = cfg.Fps && Fps.TaskExists() };
+        rowToggles = new[] { tAuto, tTop, tSide, tGame, tFps };
 
         // Monitor
         var mons = Program.Monitors();
@@ -892,7 +1027,7 @@ class SetupForm : Form
         updLink.MouseLeave += (s, e) => { if (update == null) updLink.ForeColor = UI.Sub; };
         updLink.Click += (s, e) => { if (update != null) new UpdateForm(update).ShowDialog(this); else CheckUpdate(true); };
 
-        page.Controls.AddRange(new Control[] { results, searchIcon, search, chosen, tAuto, tTop, tSide, tGame, segMon, segPos, segLang });
+        page.Controls.AddRange(new Control[] { results, searchIcon, search, chosen, tAuto, tTop, tSide, tGame, tFps, segMon, segPos, segLang });
         bar.Controls.AddRange(new Control[] { status, stop, save, updLink });
         Controls.Add(page); Controls.Add(bar);
         results.BringToFront();
@@ -928,8 +1063,8 @@ class SetupForm : Form
         results.Location = new Point(L0, Y(searchCard.Bottom + UI.S(6))); results.Width = CW;
         secSet = searchCard.Bottom + UI.S(44);
         rowH = UI.S(62);
-        setCard = new Rectangle(L0, secSet + UI.S(24), CW, rowH * 4);
-        for (int i = 0; i < 4; i++) rowToggles[i].Location = new Point(setCard.Right - rowToggles[i].Width - UI.S(14), Y(setCard.Y + i * rowH + (rowH - rowToggles[i].Height) / 2));
+        setCard = new Rectangle(L0, secSet + UI.S(24), CW, rowH * 5);
+        for (int i = 0; i < 5; i++) rowToggles[i].Location = new Point(setCard.Right - rowToggles[i].Width - UI.S(14), Y(setCard.Y + i * rowH + (rowH - rowToggles[i].Height) / 2));
         secMon = setCard.Bottom + UI.S(22);
         int monRows = (segMon.Items.Length + 1) / 2;
         segMon.Location = new Point(L0, Y(secMon + UI.S(24))); segMon.Size = new Size(CW, UI.S(38) * monRows);
@@ -953,7 +1088,7 @@ class SetupForm : Form
     {
         var sp = page.AutoScrollPosition; var p = new Point(pt.X - sp.X, pt.Y - sp.Y);
         if (!setCard.Contains(p)) return null;
-        int i = (p.Y - setCard.Y) / rowH; return i >= 0 && i < 4 ? rowToggles[i] : null;
+        int i = (p.Y - setCard.Y) / rowH; return i >= 0 && i < 5 ? rowToggles[i] : null;
     }
 
     // ---------- Malen ----------
@@ -974,8 +1109,9 @@ class SetupForm : Form
             { Tr.T("Mit Windows starten", "Start with Windows"), Tr.T("Widget startet automatisch beim Hochfahren", "Widget starts automatically") },
             { Tr.T("Immer im Vordergrund", "Always on top"), Tr.T("Auch über Spielen im randlosen Fenster", "Also over borderless games") },
             { Tr.T("An den Rand bei offenen Fenstern", "Hide to edge when apps are open"), Tr.T("Pfeil am Rand – Maus drauf holt es zurück", "Arrow at the edge – hover to bring it back") },
-            { Tr.T("Spiel-Modus", "Game mode"), Tr.T("Beim Zocken nur eine kleine Leiste (Uhr, Song, Ping)", "Small bar while gaming (clock, song, ping)") } };
-        for (int i = 0; i < 4; i++)
+            { Tr.T("Spiel-Modus", "Game mode"), Tr.T("Beim Zocken nur eine kleine Leiste (Uhr, Song, Ping)", "Small bar while gaming (clock, song, ping)") },
+            { Tr.T("FPS anzeigen", "Show FPS"), Tr.T("Braucht einmal Admin-Rechte (PresentMon von Intel)", "Needs admin rights once (PresentMon by Intel)") } };
+        for (int i = 0; i < 5; i++)
         {
             int ry = setCard.Y + i * rowH;
             if (i > 0) using (var p = new Pen(UI.Line)) g.DrawLine(p, setCard.X + UI.S(16), ry, setCard.Right, ry);
@@ -1072,7 +1208,7 @@ class SetupForm : Form
         {
             var c = new Program.Cfg
             {
-                Top = tTop.Checked, Sidebar = tSide.Checked, Game = tGame.Checked,
+                Top = tTop.Checked, Sidebar = tSide.Checked, Game = tGame.Checked, Fps = tFps.Checked,
                 Corner = segPos.Selected,
                 Monitor = ((List<int>)segMon.Tag)[Math.Max(0, segMon.Selected)],
                 Lang = segLang.Selected == 1 ? "en" : "de"
@@ -1084,11 +1220,22 @@ class SetupForm : Form
             Program.SaveCfg(c, Program.SettingsFile);
             Program.MarkSetupDone();
             Program.Start();
+            // FPS: Aufgabe einmalig mit Admin-Rechten anlegen
+            string fpsNote = null;
+            if (c.Fps)
+            {
+                if (!Fps.TaskExists())
+                {
+                    status.Text = Tr.T("Bitte die Windows-Abfrage bestätigen …", "Please confirm the Windows prompt …"); status.Refresh();
+                    if (!Fps.Install(Application.ExecutablePath)) { c.Fps = false; tFps.Checked = false; Program.SaveCfg(c, Program.SettingsFile); fpsNote = Tr.T("FPS nicht eingeschaltet – Admin-Abfrage abgelehnt.", "FPS not enabled – admin prompt declined."); }
+                }
+                else Fps.StartTask();
+            }
             running = true;
             bool langChanged = c.Lang != Tr.Lang;
             Tr.Lang = c.Lang;
             if (langChanged) BuildUi(); else RefreshButtons();
-            status.ForeColor = UI.Green; status.Text = "✓  " + Tr.T("Gespeichert – das Widget läuft.", "Saved – the widget is running.");
+            status.ForeColor = fpsNote == null ? UI.Green : UI.Red; status.Text = fpsNote ?? "✓  " + Tr.T("Gespeichert – das Widget läuft.", "Saved – the widget is running.");
         }
         catch (Exception ex) { status.ForeColor = UI.Red; status.Text = Tr.T("Fehler: ", "Error: ") + ex.Message; }
         save.Enabled = true;

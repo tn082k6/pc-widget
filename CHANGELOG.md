@@ -4,6 +4,7 @@
 
 - **Andere Player:** Neben Spotify werden jetzt auch YouTube im Browser, YouTube Music, Apple Music, VLC usw. erkannt – angezeigt wird, was gerade läuft (Spotify hat Vorrang). Die Quelle steht hinter dem Künstler, Lautstärke und Klick aufs Cover gelten für die jeweilige App.
 - **Ping:** neue Zeile im aufgeklappten Widget, farbig (grün/orange/rot).
+- **FPS (Option):** Bildrate des Programms im Vordergrund – im Widget neben dem Ping und in der Spiel-Leiste. Gemessen mit PresentMon von Intel; beim Einschalten fragt Windows einmal nach Admin-Rechten, danach läuft die Messung über eine geplante Aufgabe automatisch.
 - **Spiel-Modus (Option):** Läuft ein Spiel im Vollbild, verschwindet das große Widget und eine kleine Leiste zeigt Uhrzeit, Song und Ping.
 - **Mehrere Monitore:** Bildschirm für das Widget im Einrichtungsfenster wählbar.
 - **Englisch:** Sprache umschaltbar (App und Texte im Widget).

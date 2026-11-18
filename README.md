@@ -68,3 +68,4 @@ Das Skript kompiliert `src/PCWidget.cs` (mit dem C#-Compiler aus dem .NET Framew
 - Eigener Code: MIT (siehe `LICENSE`).
 - Die Release-ZIP enthält [Rainmeter](https://www.rainmeter.net) (GPL v2), Quellcode: <https://github.com/rainmeter/rainmeter>.
 - Wetter: [open-meteo.com](https://open-meteo.com), Postleitzahlen: [zippopotam.us](https://zippopotam.us).
+- FPS-Messung: [PresentMon](https://github.com/GameTechDev/PresentMon) von Intel (MIT), braucht einmal Admin-Rechte.

@@ -1,4 +1,4 @@
-# Baut die fertige PC-Widget.exe (eine Datei, richtet sich beim ersten Start selbst ein)
+﻿# Baut die fertige PC-Widget.exe (eine Datei, richtet sich beim ersten Start selbst ein)
 # Voraussetzung: Rainmeter 4.5 installiert (https://www.rainmeter.net), .NET Framework 4.x (bei Windows dabei)
 param([string]$Rainmeter = "$env:ProgramFiles\Rainmeter", [string]$Out = "$PSScriptRoot\..\dist")
 $ErrorActionPreference = 'Stop'
@@ -14,6 +14,12 @@ Copy-Item "$Rainmeter\*" "$stage\Rainmeter\" -Recurse -Exclude 'uninst.exe'
 Copy-Item "$root\skin\Rainmeter.ini" "$stage\Rainmeter\Rainmeter.ini"
 Copy-Item "$root\skin\PCWidget" "$stage\Rainmeter\Skins\PCWidget" -Recurse
 Copy-Item "$root\skin\Lies mich.txt" "$stage\Lies mich.txt"
+
+# PresentMon (Intel, MIT) fuer die FPS-Anzeige laden und pruefen
+New-Item -ItemType Directory -Force "$stage\Tools" | Out-Null
+Invoke-WebRequest 'https://github.com/GameTechDev/PresentMon/releases/download/v2.6.0/PresentMon-2.6.0-x64.exe' -OutFile "$stage\Tools\PresentMon.exe" -UseBasicParsing
+if ((Get-FileHash "$stage\Tools\PresentMon.exe" -Algorithm SHA256).Hash -ne 'B2A706BC6AD475749E3B7E3409263AA1E6906D45BDCF993F6DBC0F660188F1AF') { throw 'PresentMon-Pruefsumme stimmt nicht' }
+Invoke-WebRequest 'https://raw.githubusercontent.com/GameTechDev/PresentMon/v2.6.0/LICENSE.txt' -OutFile "$stage\Tools\PresentMon-LICENSE.txt" -UseBasicParsing
 
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 function New-Zip($files, $base, $zip) {

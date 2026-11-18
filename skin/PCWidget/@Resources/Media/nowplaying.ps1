@@ -363,7 +363,9 @@ while ($true) {
         if ($lastKey -eq '') { $coverPath = ''; $coverColor = $defaultColor }
         try { $volume = [PCW.AppVolume]::Get($script:volProc) } catch { $volume = -1 }
         if ($Gpu) { Update-Gpu }
-        $line = '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}|{11}|{12}|' -f ($title -replace '\|', '/'), ($artist -replace '\|', '/'), $status, ($pct.ToString([Globalization.CultureInfo]::InvariantCulture)), $coverPath, $coverColor, $posTxt, $durTxt, $volume, $gpuPct, $fgState, $script:srcLabel, $pingMs
+        $fpsTxt = ''
+        try { $ff = Join-Path $Dir 'fps.txt'; if ((Test-Path $ff) -and ((Get-Date) - (Get-Item $ff).LastWriteTime).TotalSeconds -lt 4) { $fpsTxt = ([System.IO.File]::ReadAllText($ff)).Trim() } } catch { }
+        $line = '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}|{11}|{12}|{13}|' -f ($title -replace '\|', '/'), ($artist -replace '\|', '/'), $status, ($pct.ToString([Globalization.CultureInfo]::InvariantCulture)), $coverPath, $coverColor, $posTxt, $durTxt, $volume, $gpuPct, $fgState, $script:srcLabel, $pingMs, $fpsTxt
         [System.IO.File]::WriteAllText($outFile, $line, $utf8)
     }
     $tick--

@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.8.6.0")]
+[assembly: System.Reflection.AssemblyVersion("1.8.7.0")]
 
 static class Program
 {
@@ -218,7 +218,9 @@ static class Program
         string hide = c.Sidebar ? "[!HideFade]" : "[!ShowFade]";
         Set(skin, "Variables", "HideAction", hide);
         Set(skin, "Variables", "ShowAction", "[!ShowFade]");
-        Set(skin, "Variables", "GameAction", c.Game ? "[!HideFade]" : hide);
+        Set(skin, "Variables", "GameAction", c.Game ? "[!HideFade]" : "[!ShowFade]");
+        Set(skin, "Variables", "AutoSide", c.Sidebar ? "1" : "0");
+        Set(skin, "Variables", "Docked", "0");
         Set(skin, "Variables", "GrabX", right ? "0" : "264");
         Set(skin, "Variables", "GrabArrow", right ? "[\\xE76C]" : "[\\xE76B]");
 
@@ -317,7 +319,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.8.6";
+    public const string Version = "1.8.7";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -608,7 +610,7 @@ static class Fps
         try { File.WriteAllText(LogFile, ""); } catch { }
         Log("FPS-Messung gestartet (Version " + Installer.Version + ")");
         try { File.WriteAllText(RunFlag, Process.GetCurrentProcess().Id.ToString()); } catch { }
-        Process pm = null; int fails = 0; DateTime nextTry = DateTime.MinValue, lastStat = DateTime.Now;
+        Process pm = null; int fails = 0; bool blocked = false; DateTime nextTry = DateTime.MinValue, lastStat = DateTime.Now;
         try
         {
             while (!File.Exists(StopFlag))
@@ -618,6 +620,7 @@ static class Fps
                 {
                     string err; lock (errLines) err = string.Join(" / ", errLines.ToArray());
                     Log("PresentMon beendet, Code " + pm.ExitCode + (err != "" ? ": " + err : ""));
+                    blocked = err.IndexOf("access denied", StringComparison.OrdinalIgnoreCase) >= 0;
                     pm = null; fails++;
                     nextTry = DateTime.Now.AddSeconds(Math.Min(60, 2 * fails));   // nicht im Sekundentakt neu starten
                 }
@@ -630,14 +633,14 @@ static class Fps
                     pm = new Process { StartInfo = si };
                     pm.OutputDataReceived += (s, e) => OnLine(e.Data);
                     pm.ErrorDataReceived += (s, e) => { if (!string.IsNullOrEmpty(e.Data)) lock (errLines) { errLines.Enqueue(e.Data.Trim()); while (errLines.Count > 6) errLines.Dequeue(); } };
-                    try { pm.Start(); pm.BeginOutputReadLine(); pm.BeginErrorReadLine(); Log("PresentMon gestartet (PID " + pm.Id + ")"); }
+                    try { pm.Start(); pm.BeginOutputReadLine(); pm.BeginErrorReadLine(); blocked = false; Log("PresentMon gestartet (PID " + pm.Id + ")"); }
                     catch (Exception ex) { Log("PresentMon konnte nicht starten: " + ex.Message); pm = null; fails++; nextTry = DateTime.Now.AddSeconds(Math.Min(60, 2 * fails)); }
                 }
                 if (!want && pm != null) { try { if (!pm.HasExited) pm.Kill(); } catch { } pm = null; StopSession(); try { File.Delete(OutFile); } catch { } }
                 if (want)
                 {
                     uint fg; GetWindowThreadProcessId(GetForegroundWindow(), out fg);
-                    try { File.WriteAllText(OutFile, pm != null ? FpsOf((int)fg).ToString() : ""); } catch { }
+                    try { File.WriteAllText(OutFile, pm != null ? FpsOf((int)fg).ToString() : (blocked ? "AC" : "")); } catch { }
                     if (pm != null && colPid >= 0) fails = 0;
                 }
                 if (want && (DateTime.Now - lastStat).TotalSeconds >= 60) { lastStat = DateTime.Now; long lt; lock (sync) lt = linesTotal; Log("Bilder empfangen bisher: " + lt); }

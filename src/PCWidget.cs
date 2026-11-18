@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.8.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.8.2.0")]
 
 static class Program
 {
@@ -317,7 +317,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.8";
+    public const string Version = "1.8.2";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -404,7 +404,6 @@ static class Installer
                     var c = Program.HasCfg(sf0) ? Program.LoadCfg(sf0) : Program.CfgFromFiles(rmIni, skin);
                     Program.ApplyCfg(c, rm);
                     Program.SaveCfg(c, sf0);
-                    if (c.Fps && Fps.TaskExists()) Fps.StartTask(Dir);
                 }
                 if (wasSetup) File.WriteAllText(flag, DateTime.Now.ToString("s"));
                 // Wetter-Ort aus der eigenen Einstellungsdatei wiederherstellen (hat Vorrang)
@@ -421,6 +420,7 @@ static class Installer
                 {
                     try { if (p.Id != me && p.MainModule.FileName.Equals(exe, StringComparison.OrdinalIgnoreCase)) { p.Kill(); p.WaitForExit(3000); } } catch { }
                 }
+                Fps.StopWorker(Dir);
                 // alte exe kann sich nach einem Update noch beenden -> kurz warten
                 for (int i = 0; ; i++)
                 {
@@ -428,6 +428,8 @@ static class Installer
                     catch (IOException) { if (i > 30) throw; Thread.Sleep(300); }
                 }
                 File.WriteAllText(ver, Version);
+                // FPS-Messung erst jetzt wieder starten (sonst sperrt sie die exe)
+                try { if (Program.HasCfg(Path.Combine(Dir, "einstellungen.ini")) && Program.LoadCfg(Path.Combine(Dir, "einstellungen.ini")).Fps && Fps.TaskExists()) Fps.StartTask(Dir); } catch { }
                 Unblock(Dir);
                 CreateShortcut(StartMenuLnk, exe);
                 Register(exe);
@@ -547,32 +549,62 @@ static class Fps
 
     static bool Enabled() { return !Program.HasCfg(Program.SettingsFile) || Program.LoadCfg(Program.SettingsFile).Fps; }
 
+    static string LogFile { get { return Path.Combine(Dir, "fps.log"); } }
+    static void Log(string s) { try { File.AppendAllText(LogFile, DateTime.Now.ToString("HH:mm:ss") + "  " + s + Environment.NewLine); } catch { } }
+    static readonly Queue<string> errLines = new Queue<string>();
+
+    // Haengengebliebene Mess-Sitzung von einem frueheren Lauf beenden (sonst kann PresentMon nicht neu starten)
+    // eigener Sitzungsname pro Lauf: eine haengengebliebene alte Sitzung kann so nicht mehr blockieren
+    static readonly string Session = "PCWidgetFPS_" + Process.GetCurrentProcess().Id;
+
+    static void StopSession()
+    {
+        try
+        {
+            var si = new ProcessStartInfo("logman.exe", "stop " + Session + " -ets") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            using (var p = Process.Start(si)) { p.WaitForExit(5000); }
+        }
+        catch { }
+    }
+
     public static void RunWorker()
     {
         bool created; var mutex = new Mutex(true, "Local\\PCWidgetFpsWorker", out created);
         if (!created) return;
+        try { File.WriteAllText(LogFile, ""); } catch { }
+        Log("FPS-Messung gestartet (Version " + Installer.Version + ")");
         try { File.WriteAllText(RunFlag, Process.GetCurrentProcess().Id.ToString()); } catch { }
-        Process pm = null;
+        Process pm = null; int fails = 0; DateTime nextTry = DateTime.MinValue;
         try
         {
             while (!File.Exists(StopFlag))
             {
                 bool want = File.Exists(PmExe) && WidgetRunning() && Enabled();
-                if (want && (pm == null || pm.HasExited))
+                if (pm != null && pm.HasExited)
                 {
-                    colPid = -1;
-                    var si = new ProcessStartInfo(PmExe, "--output_stdout --no_csv --no_console_stats --v1_metrics --no_track_display --no_track_input --no_track_gpu --session_name PCWidgetFPS --stop_existing_session")
-                    { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WindowStyle = ProcessWindowStyle.Hidden };
+                    string err; lock (errLines) err = string.Join(" / ", errLines.ToArray());
+                    Log("PresentMon beendet, Code " + pm.ExitCode + (err != "" ? ": " + err : ""));
+                    pm = null; fails++;
+                    nextTry = DateTime.Now.AddSeconds(Math.Min(60, 2 * fails));   // nicht im Sekundentakt neu starten
+                }
+                if (want && pm == null && DateTime.Now >= nextTry)
+                {
+                    colPid = -1; lock (errLines) errLines.Clear();
+                    StopSession();
+                    var si = new ProcessStartInfo(PmExe, "--output_stdout --no_console_stats --v1_metrics --no_track_display --no_track_input --no_track_gpu --session_name " + Session + " --stop_existing_session")
+                    { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = Path.GetTempPath() };
                     pm = new Process { StartInfo = si };
                     pm.OutputDataReceived += (s, e) => OnLine(e.Data);
-                    pm.ErrorDataReceived += (s, e) => { };
-                    try { pm.Start(); pm.BeginOutputReadLine(); pm.BeginErrorReadLine(); } catch { pm = null; }
+                    pm.ErrorDataReceived += (s, e) => { if (!string.IsNullOrEmpty(e.Data)) lock (errLines) { errLines.Enqueue(e.Data.Trim()); while (errLines.Count > 6) errLines.Dequeue(); } };
+                    try { pm.Start(); pm.BeginOutputReadLine(); pm.BeginErrorReadLine(); Log("PresentMon gestartet (PID " + pm.Id + ")"); }
+                    catch (Exception ex) { Log("PresentMon konnte nicht starten: " + ex.Message); pm = null; fails++; nextTry = DateTime.Now.AddSeconds(Math.Min(60, 2 * fails)); }
                 }
-                if (!want && pm != null) { try { if (!pm.HasExited) pm.Kill(); } catch { } pm = null; try { File.Delete(OutFile); } catch { } }
+                if (!want && pm != null) { try { if (!pm.HasExited) pm.Kill(); } catch { } pm = null; StopSession(); try { File.Delete(OutFile); } catch { } }
                 if (want)
                 {
                     uint fg; GetWindowThreadProcessId(GetForegroundWindow(), out fg);
-                    try { File.WriteAllText(OutFile, FpsOf((int)fg).ToString()); } catch { }
+                    try { File.WriteAllText(OutFile, pm != null ? FpsOf((int)fg).ToString() : ""); } catch { }
+                    if (pm != null && colPid >= 0) fails = 0;
                 }
                 Thread.Sleep(want ? 1000 : 5000);
             }
@@ -580,12 +612,13 @@ static class Fps
         finally
         {
             try { if (pm != null && !pm.HasExited) pm.Kill(); } catch { }
+            StopSession();
             try { File.Delete(OutFile); } catch { }
             try { File.Delete(RunFlag); } catch { }
+            Log("FPS-Messung beendet");
             mutex.ReleaseMutex();
         }
     }
-
     static int Schtasks(string args, bool elevated)
     {
         var si = new ProcessStartInfo("schtasks.exe", args) { CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };

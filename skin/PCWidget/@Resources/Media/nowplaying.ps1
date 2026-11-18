@@ -37,11 +37,38 @@ $coverPath = ''
 $coverToggle = 0
 $tick = 0
 
+$script:lastSource = ''
+$script:volProc = 'Spotify'
+$script:srcLabel = ''
+
+# Welche Musik-/Video-Quelle anzeigen? Spielt etwas, gewinnt Spotify, sonst die zuletzt gezeigte, sonst irgendeine.
 function Get-Session {
-    $sessions = $mgr.GetSessions()
-    $s = $sessions | Where-Object { $_.SourceAppUserModelId -like '*Spotify*' } | Select-Object -First 1
-    if (-not $s) { $s = $mgr.GetCurrentSession() }
-    $s
+    $sessions = @($mgr.GetSessions())
+    if ($sessions.Count -eq 0) { return $mgr.GetCurrentSession() }
+    $playing = @($sessions | Where-Object { "$($_.GetPlaybackInfo().PlaybackStatus)" -eq 'Playing' })
+    $pick = $playing | Where-Object { $_.SourceAppUserModelId -like '*Spotify*' } | Select-Object -First 1
+    if (-not $pick) { $pick = $playing | Where-Object { $_.SourceAppUserModelId -eq $script:lastSource } | Select-Object -First 1 }
+    if (-not $pick) { $pick = $playing | Select-Object -First 1 }
+    if (-not $pick) { $pick = $sessions | Where-Object { $_.SourceAppUserModelId -eq $script:lastSource } | Select-Object -First 1 }
+    if (-not $pick) { $pick = $sessions | Where-Object { $_.SourceAppUserModelId -like '*Spotify*' } | Select-Object -First 1 }
+    if (-not $pick) { $pick = $mgr.GetCurrentSession() }
+    if ($pick) { Set-Source $pick.SourceAppUserModelId }
+    $pick
+}
+
+# Aus der App-Kennung den Prozessnamen (fuer Lautstaerke/Fenster) und einen lesbaren Namen machen
+function Set-Source([string]$aumid) {
+    $script:lastSource = $aumid
+    $names = @{ chrome = 'Chrome'; msedge = 'Edge'; firefox = 'Firefox'; opera = 'Opera'; opera_gx = 'Opera GX'; brave = 'Brave'; vivaldi = 'Vivaldi';
+                vlc = 'VLC'; 'youtube music' = 'YouTube Music'; applemusicwin = 'Apple Music'; amazonmusic = 'Amazon Music'; deezer = 'Deezer'; tidal = 'TIDAL';
+                discord = 'Discord'; zunemusic = 'Media Player'; microsoft = 'Media Player'; foobar2000 = 'foobar2000'; aimp = 'AIMP' }
+    if ($aumid -like '*Spotify*') { $script:volProc = 'Spotify'; $script:srcLabel = ''; return }
+    $proc = ''; $key = ''
+    if ($aumid -notmatch '!') { $proc = [IO.Path]::GetFileNameWithoutExtension($aumid); $key = $proc.ToLower() }
+    else { $key = ($aumid.Split('!')[0].Split('_')[0].Split('.')[-1]).ToLower() }
+    $script:volProc = $proc
+    $label = if ($names.ContainsKey($key)) { $names[$key] } elseif ($key) { $key } else { 'Medien' }
+    $script:srcLabel = '  ·  ' + $label
 }
 
 function Save-Cover($props) {
@@ -114,7 +141,23 @@ namespace PCW {
       string n = ProcName(h);
       if (n == "rainmeter") return "desk";
       if (n == "startmenuexperiencehost" || n == "searchhost" || n == "searchapp" || n == "shellexperiencehost" || n == "lockapp") return AnyAppWindow() ? "" : "desk";
+      // Spiel: Vollbild auf seinem Monitor oder ein bekanntes Spiel vorne
+      if (Array.IndexOf(Games, n) >= 0 || IsFullscreen(h)) return "game";
       return "app";
+    }
+
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr h, uint f);
+    [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr m, ref MONITORINFO mi);
+    [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
+    static readonly string[] Games = { "r5apex_dx12", "r5apex", "valorant-win64-shipping", "cs2", "csgo", "fortniteclient-win64-shipping",
+      "rainbowsix", "rainbowsix_vulkan", "rainbowsix_be", "cod", "gta5", "gta5_enhanced", "rdr2", "league of legends", "overwatch", "eldenring",
+      "rocketleague", "minecraft.windows", "amongus", "dota2", "pubg", "tslgame", "destiny2", "eafc25", "eafc26", "fc25", "fc26", "palworld-win64-shipping" };
+    static bool IsFullscreen(IntPtr h) {
+      if ((GetWindowLong(h, -16) & 0x00C00000) == 0x00C00000) return false;   // normales Fenster mit Titelleiste (z. B. maximiert) = kein Spiel
+      RECT r; if (!GetWindowRect(h, out r)) return false;
+      var mi = new MONITORINFO(); mi.cbSize = Marshal.SizeOf(typeof(MONITORINFO));
+      if (!GetMonitorInfo(MonitorFromWindow(h, 2), ref mi)) return false;
+      return r.L <= mi.rcMonitor.L && r.T <= mi.rcMonitor.T && r.R >= mi.rcMonitor.R && r.B >= mi.rcMonitor.B;
     }
   }
   [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
@@ -131,6 +174,20 @@ namespace PCW {
     [PreserveSig] int GetProcessId(out uint pid); }
   [Guid("87CE5498-68D6-44E5-9215-6DA47EF883D8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface ISimpleAudioVolume { [PreserveSig] int SetMasterVolume(float v, ref Guid ctx); [PreserveSig] int GetMasterVolume(out float v); }
+
+  // Fenster einer App nach vorne holen (Klick aufs Cover)
+  public static class Win {
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int c);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    public static bool Front(string proc) {
+      foreach (var p in Process.GetProcessesByName(proc)) {
+        IntPtr h = p.MainWindowHandle;
+        if (h != IntPtr.Zero) { if (IsIconic(h)) ShowWindow(h, 9); SetForegroundWindow(h); return true; }
+      }
+      return false;
+    }
+  }
 
   public static class AppVolume {
     static System.Collections.Generic.List<ISimpleAudioVolume> Find(string proc) {
@@ -221,11 +278,20 @@ function Get-CoverColor($path) {
 }
 
 $fgState = 'desk'
+$pinger = New-Object System.Net.NetworkInformation.Ping
+$pingTask = $null; $pingMs = ''; $pingNext = Get-Date
 
 while ($true) {
     # Aktives Fenster pruefen (4x pro Sekunde), bei Wechsel sofort melden
     try { $fgNow = [PCW.Fg]::State() } catch { $fgNow = '' }
     if ($fgNow -and $fgNow -ne $fgState) { $fgState = $fgNow; $tick = 0 }
+
+    # Ping zu 1.1.1.1 messen
+    if ($pingTask -and $pingTask.IsCompleted) {
+        try { $r = $pingTask.Result; $pingMs = if ($r.Status -eq 'Success') { [string]$r.RoundtripTime } else { 'x' } } catch { $pingMs = 'x' }
+        $pingTask = $null
+    }
+    if (-not $pingTask -and (Get-Date) -ge $pingNext) { $pingNext = (Get-Date).AddSeconds(2); try { $pingTask = $pinger.SendPingAsync('1.1.1.1', 1500) } catch { $pingMs = 'x' } }
 
     # Klick-Befehle aus Rainmeter
     # Datei muss existieren, sonst kann Rainmeter nicht reinschreiben
@@ -240,18 +306,24 @@ while ($true) {
         [System.IO.File]::WriteAllText($cmdFile, "[Cmd]`r`nAction=`r`n")
         # Lautstaerke: volup / voldown / vol<0-100>
         if ($action -eq 'volmute') {
-            $cur = [PCW.AppVolume]::Get('Spotify')
-            if ($cur -gt 0) { $script:volBeforeMute = $cur; $null = [PCW.AppVolume]::Set('Spotify', 0) }
-            elseif ($cur -eq 0) { $r = if ($script:volBeforeMute) { $script:volBeforeMute } else { 50 }; $null = [PCW.AppVolume]::Set('Spotify', $r) }
+            $cur = [PCW.AppVolume]::Get($script:volProc)
+            if ($cur -gt 0) { $script:volBeforeMute = $cur; $null = [PCW.AppVolume]::Set($script:volProc, 0) }
+            elseif ($cur -eq 0) { $r = if ($script:volBeforeMute) { $script:volBeforeMute } else { 50 }; $null = [PCW.AppVolume]::Set($script:volProc, $r) }
             $action = ''; $tick = 0
         }
         if ($action -match '^vol(up|down|(\d+))$') {
-            $cur = [PCW.AppVolume]::Get('Spotify')
+            $cur = [PCW.AppVolume]::Get($script:volProc)
             if ($cur -ge 0) {
                 $target = if ($Matches[1] -eq 'up') { $cur + 5 } elseif ($Matches[1] -eq 'down') { $cur - 5 } else { [int]$Matches[2] }
-                $null = [PCW.AppVolume]::Set('Spotify', $target)
+                $null = [PCW.AppVolume]::Set($script:volProc, $target)
             }
             $action = ''; $tick = 0
+        }
+        if ($action -eq 'open') {
+            $null = Get-Session
+            if ($script:volProc -eq 'Spotify') { Start-Process 'spotify:' }
+            elseif ($script:volProc) { $null = [PCW.Win]::Front($script:volProc) }
+            $action = ''
         }
         $s = Get-Session
         if ($s) {
@@ -266,7 +338,7 @@ while ($true) {
 
     if ($tick -le 0) {
         $tick = 4   # alle ~1 Sekunde
-        $title = 'Nichts läuft'; $artist = 'Spotify'; $status = 'Stopped'; $pct = 0; $posTxt = ''; $durTxt = ''
+        $title = 'Nichts läuft'; $artist = 'Musik'; $status = 'Stopped'; $pct = 0; $posTxt = ''; $durTxt = ''
         $s = Get-Session
         if ($s) {
             $props = Await ($s.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
@@ -289,9 +361,9 @@ while ($true) {
             }
         } else { $lastKey = ''; $coverPath = '' }
         if ($lastKey -eq '') { $coverPath = ''; $coverColor = $defaultColor }
-        try { $volume = [PCW.AppVolume]::Get('Spotify') } catch { $volume = -1 }
+        try { $volume = [PCW.AppVolume]::Get($script:volProc) } catch { $volume = -1 }
         if ($Gpu) { Update-Gpu }
-        $line = '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}|' -f ($title -replace '\|', '/'), ($artist -replace '\|', '/'), $status, ($pct.ToString([Globalization.CultureInfo]::InvariantCulture)), $coverPath, $coverColor, $posTxt, $durTxt, $volume, $gpuPct, $fgState
+        $line = '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}|{11}|{12}|' -f ($title -replace '\|', '/'), ($artist -replace '\|', '/'), $status, ($pct.ToString([Globalization.CultureInfo]::InvariantCulture)), $coverPath, $coverColor, $posTxt, $durTxt, $volume, $gpuPct, $fgState, $script:srcLabel, $pingMs
         [System.IO.File]::WriteAllText($outFile, $line, $utf8)
     }
     $tick--

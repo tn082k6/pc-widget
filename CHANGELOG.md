@@ -1,5 +1,15 @@
 # Änderungen
 
+## 1.8 – 18.11.2026
+
+- **Andere Player:** Neben Spotify werden jetzt auch YouTube im Browser, YouTube Music, Apple Music, VLC usw. erkannt – angezeigt wird, was gerade läuft (Spotify hat Vorrang). Die Quelle steht hinter dem Künstler, Lautstärke und Klick aufs Cover gelten für die jeweilige App.
+- **Ping:** neue Zeile im aufgeklappten Widget, farbig (grün/orange/rot).
+- **Spiel-Modus (Option):** Läuft ein Spiel im Vollbild, verschwindet das große Widget und eine kleine Leiste zeigt Uhrzeit, Song und Ping.
+- **Mehrere Monitore:** Bildschirm für das Widget im Einrichtungsfenster wählbar.
+- **Englisch:** Sprache umschaltbar (App und Texte im Widget).
+- **Einstellungen als richtige App:** normale Titelleiste mit Minimieren/Maximieren/Schließen, Größe verstellbar, scrollbar, bleibt nach dem Speichern offen.
+- Alle Einstellungen liegen in `einstellungen.ini` und werden bei jedem Update vollständig wiederhergestellt.
+
 ## 1.7 – 18.11.2026
 
 - **Großer Griff zum An-den-Rand-Schieben:** Die Klickfläche an der Widget-Kante geht jetzt über die ganze Höhe. Mit der Maus darüber wird daraus eine helle Leiste mit Pfeil – Klick schiebt das Widget an den Rand.

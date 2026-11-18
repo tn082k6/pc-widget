@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.6.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.7.0.0")]
 
 static class Program
 {
@@ -138,7 +138,7 @@ static class Program
     {
         Set(SkinIni, "Variables", "HideAction", on ? "[!HideFade]" : "");
         Set(SkinIni, "Variables", "ShowAction", on ? "[!ShowFade]" : "");
-        Set(SkinIni, "Variables", "GrabX", right ? "0" : "268");
+        Set(SkinIni, "Variables", "GrabX", right ? "0" : "264"); Set(SkinIni, "Variables", "GrabArrow", right ? "[\\xE76C]" : "[\\xE76B]");
         Set(TabIni, "Variables", "TabOnApp", on ? "[!ShowFade]" : "");
         Set(TabIni, "Variables", "TabOnDesk", on ? "[!HideFade]" : "");
     }
@@ -199,7 +199,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.6";
+    public const string Version = "1.7";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -284,7 +284,7 @@ static class Installer
                 {
                     bool r = Read(rmIni, "PCWidget", "AnchorX") != "0%", b = Read(rmIni, "PCWidget", "AnchorY") == "100%";
                     Program.WriteTabPosition(r, b, rmIni, tabIni);
-                    WritePrivateProfileString("Variables", "GrabX", r ? "0" : "268", skin);
+                    WritePrivateProfileString("Variables", "GrabX", r ? "0" : "264", skin); WritePrivateProfileString("Variables", "GrabArrow", r ? "[\\xE76C]" : "[\\xE76B]", skin);
                 }
                 if (wasSetup) File.WriteAllText(flag, DateTime.Now.ToString("s"));
                 // Wetter-Ort aus der eigenen Einstellungsdatei wiederherstellen (hat Vorrang)

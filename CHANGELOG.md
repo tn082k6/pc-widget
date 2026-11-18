@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.7 – 18.11.2026
+
+- **Großer Griff zum An-den-Rand-Schieben:** Die Klickfläche an der Widget-Kante geht jetzt über die ganze Höhe. Mit der Maus darüber wird daraus eine helle Leiste mit Pfeil – Klick schiebt das Widget an den Rand.
+- **Doppelklick** auf eine freie Stelle im Widget schiebt es ebenfalls an den Rand.
+
 ## 1.6 – 15.11.2026
 
 - **Größerer Pfeil-Griff** (24 × 90) mit einer unsichtbaren, noch größeren Hover-Zone – viel leichter zu treffen.

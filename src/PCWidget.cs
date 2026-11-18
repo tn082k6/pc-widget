@@ -232,8 +232,8 @@ static class Program
         Set(tab, "Variables", "Arrow", right ? "[\\xE76B]" : "[\\xE76C]");
         Set(tab, "Variables", "TabX", tx); Set(tab, "Variables", "TabY", ty);
         Set(tab, "Variables", "TabAX", ax); Set(tab, "Variables", "TabAY", ay);
-        Set(tab, "Variables", "TabOnApp", c.Sidebar ? "[!ShowFade]" : "");
-        Set(tab, "Variables", "TabOnDesk", c.Sidebar ? "[!HideFade]" : "");
+        Set(tab, "Variables", "TabOnApp", c.Sidebar ? "[!ShowFade]" : "[!HideFade]");
+        Set(tab, "Variables", "TabOnDesk", "[!HideFade]");   // Griff verschwindet immer, wenn kein Programm vorne ist
 
         // Spiel-Modus-Leiste (gleiche Ecke wie das Widget)
         Set(rmIni, @"PCWidget\Mini", "Active", "1");

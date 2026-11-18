@@ -294,6 +294,13 @@ static class Installer
                 if (Read(sf, "Wetter", "Ort") == null && keep.ContainsKey("Ort"))
                     foreach (var k in new[] { "Ort", "PLZ", "Lat", "Lon" }) if (keep.ContainsKey(k)) WritePrivateProfileString("Wetter", k, keep[k], sf);
 
+                // andere laufende PC-Widget.exe dieser Installation (z. B. Autostart, der gerade nach Updates schaut) beenden,
+                // sonst ist die Datei gesperrt
+                int me = Process.GetCurrentProcess().Id;
+                foreach (var p in Process.GetProcessesByName("PC-Widget"))
+                {
+                    try { if (p.Id != me && p.MainModule.FileName.Equals(exe, StringComparison.OrdinalIgnoreCase)) { p.Kill(); p.WaitForExit(3000); } } catch { }
+                }
                 // alte exe kann sich nach einem Update noch beenden -> kurz warten
                 for (int i = 0; ; i++)
                 {

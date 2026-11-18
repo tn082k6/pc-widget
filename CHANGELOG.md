@@ -4,6 +4,7 @@
 
 - **Großer Griff zum An-den-Rand-Schieben:** Die Klickfläche an der Widget-Kante geht jetzt über die ganze Höhe. Mit der Maus darüber wird daraus eine helle Leiste mit Pfeil – Klick schiebt das Widget an den Rand.
 - **Doppelklick** auf eine freie Stelle im Widget schiebt es ebenfalls an den Rand.
+- Behoben: Update konnte fehlschlagen („PC-Widget konnte nicht eingerichtet werden“), wenn die App im Hintergrund gerade nach Updates schaute.
 
 ## 1.6 – 15.11.2026
 

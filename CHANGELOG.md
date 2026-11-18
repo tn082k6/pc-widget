@@ -1,5 +1,15 @@
 # Änderungen
 
+## 1.8.6 – 18.11.2026
+
+- **FPS-Anzeige repariert und genauer:** FPS werden aus PresentMons eigener Bildzeit-Messung berechnet (schnellste Zeichenfläche des Programms im Vordergrund) – ruhige, genaue Werte; Browser/YouTube werden mitgezählt.
+- **4× pro Sekunde aktualisiert** (Messung, Helfer, Widget und Spiel-Leiste).
+- Hängengebliebene Mess-Sitzungen blockieren nicht mehr; Protokoll `fps.log` zur Fehlersuche.
+- Behoben: Update schlug fehl, wenn die FPS-Messung lief.
+- Behoben: Endlosschleife in der Spiel-Leiste (Widget fror ein).
+- Pfeil-Griff bleibt bei ausgeschalteter Seitenleiste verborgen.
+- Hinweis: Spiele mit **EA AntiCheat** (z. B. Apex Legends) blockieren die FPS-Messung – dort bleibt die Anzeige leer.
+
 ## 1.8 – 18.11.2026
 
 - **Andere Player:** Neben Spotify werden jetzt auch YouTube im Browser, YouTube Music, Apple Music, VLC usw. erkannt – angezeigt wird, was gerade läuft (Spotify hat Vorrang). Die Quelle steht hinter dem Künstler, Lautstärke und Klick aufs Cover gelten für die jeweilige App.

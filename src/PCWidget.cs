@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.8.2.0")]
+[assembly: System.Reflection.AssemblyVersion("1.8.6.0")]
 
 static class Program
 {
@@ -317,7 +317,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.8.2";
+    public const string Version = "1.8.6";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -515,31 +515,65 @@ static class Fps
     static int colPid = -1;
     static Stopwatch clock = Stopwatch.StartNew();
 
+    // Pro Zeichenflaeche (Prozess + SwapChain) die Zeiten zwischen den Bildern sammeln (PresentMons eigene Messung,
+    // daher egal, ob die Zeilen in Schueben ankommen). FPS = Bilder / Summe der Bildzeiten der letzten ~1 Sekunde.
+    class Chain { public int Pid; public string App; public readonly Queue<double> Ms = new Queue<double>(); public double Sum; public long Seen; }
+    static readonly Dictionary<string, Chain> chains = new Dictionary<string, Chain>();
+    static int colApp = -1, colSwap = -1, colMs = -1, firstLogged = 0; static long linesTotal = 0;
+
+    // Spaltensuche ohne Gross-/Kleinschreibung (PresentMon schreibt z. B. "msBetweenPresents")
+    static int Col(string[] parts, string name) { for (int i = 0; i < parts.Length; i++) if (string.Equals(parts[i].Trim(), name, StringComparison.OrdinalIgnoreCase)) return i; return -1; }
+
     static void OnLine(string line)
     {
         if (string.IsNullOrEmpty(line)) return;
         var parts = line.Split(',');
-        if (colPid < 0) { colPid = Array.IndexOf(parts, "ProcessID"); return; }   // Kopfzeile
+        if (colPid < 0)
+        {
+            colPid = Col(parts, "ProcessID"); colApp = Col(parts, "Application");
+            colSwap = Col(parts, "SwapChainAddress");
+            foreach (var cand in new[] { "MsBetweenPresents", "FrameTime", "MsBetweenAppStart", "MsBetweenDisplayChange", "MsBetweenSimulationStart" })
+                if (colMs < 0) colMs = Col(parts, cand);
+            Log("Spalten: " + line + "  -> Bildzeit-Spalte " + (colMs >= 0 ? parts[colMs] : "nicht gefunden"));
+            return;   // Kopfzeile
+        }
         int pid; if (colPid >= parts.Length || !int.TryParse(parts[colPid], out pid)) return;
-        long now = clock.ElapsedMilliseconds;
+        if (linesTotal == 0 && firstLogged++ == 0) Log("Erste Zeile: " + line);
+        double ms;
+        if (colMs < 0 || colMs >= parts.Length || !double.TryParse(parts[colMs], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out ms) || ms <= 0 || ms > 1000) return;
+        string swap = colSwap >= 0 && colSwap < parts.Length ? parts[colSwap] : "";
+        string app = colApp >= 0 && colApp < parts.Length ? parts[colApp] : "";
+        string key = pid + "|" + swap;
         lock (sync)
         {
-            Queue<long> q; if (!frames.TryGetValue(pid, out q)) { q = new Queue<long>(); frames[pid] = q; }
-            q.Enqueue(now); while (q.Count > 0 && now - q.Peek() > 1000) q.Dequeue();
+            linesTotal++;
+            Chain c; if (!chains.TryGetValue(key, out c)) { c = new Chain { Pid = pid, App = app }; chains[key] = c; }
+            c.Ms.Enqueue(ms); c.Sum += ms; c.Seen = clock.ElapsedMilliseconds;
+            while (c.Ms.Count > 1 && c.Sum - c.Ms.Peek() >= 1000) c.Sum -= c.Ms.Dequeue();
         }
     }
 
+    // FPS des Vordergrund-Programms: schnellste aktive Zeichenflaeche dieses Prozesses bzw. (Browser) gleichen Programmnamens
     static int FpsOf(int pid)
     {
         long now = clock.ElapsedMilliseconds;
+        string name = null; try { name = Process.GetProcessById(pid).ProcessName + ".exe"; } catch { }
+        double best = 0;
         lock (sync)
         {
-            Queue<long> q; if (!frames.TryGetValue(pid, out q)) return 0;
-            while (q.Count > 0 && now - q.Peek() > 1000) q.Dequeue();
-            return q.Count;
+            var dead = new List<string>();
+            foreach (var kv in chains)
+            {
+                var c = kv.Value;
+                if (now - c.Seen > 5000) { dead.Add(kv.Key); continue; }
+                if (now - c.Seen > 1500 || c.Ms.Count < 2 || c.Sum <= 0) continue;   // gerade keine Bilder (Pause, minimiert)
+                if (c.Pid != pid && !(name != null && string.Equals(c.App, name, StringComparison.OrdinalIgnoreCase))) continue;
+                best = Math.Max(best, c.Ms.Count * 1000.0 / c.Sum);
+            }
+            foreach (var k in dead) chains.Remove(k);
         }
+        return (int)Math.Round(best);
     }
-
     static bool WidgetRunning()
     {
         foreach (var p in Process.GetProcessesByName("Rainmeter"))
@@ -574,7 +608,7 @@ static class Fps
         try { File.WriteAllText(LogFile, ""); } catch { }
         Log("FPS-Messung gestartet (Version " + Installer.Version + ")");
         try { File.WriteAllText(RunFlag, Process.GetCurrentProcess().Id.ToString()); } catch { }
-        Process pm = null; int fails = 0; DateTime nextTry = DateTime.MinValue;
+        Process pm = null; int fails = 0; DateTime nextTry = DateTime.MinValue, lastStat = DateTime.Now;
         try
         {
             while (!File.Exists(StopFlag))
@@ -589,7 +623,7 @@ static class Fps
                 }
                 if (want && pm == null && DateTime.Now >= nextTry)
                 {
-                    colPid = -1; lock (errLines) errLines.Clear();
+                    colPid = -1; colMs = -1; colApp = -1; colSwap = -1; firstLogged = 0; lock (errLines) errLines.Clear();
                     StopSession();
                     var si = new ProcessStartInfo(PmExe, "--output_stdout --no_console_stats --v1_metrics --no_track_display --no_track_input --no_track_gpu --session_name " + Session + " --stop_existing_session")
                     { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true, WindowStyle = ProcessWindowStyle.Hidden, WorkingDirectory = Path.GetTempPath() };
@@ -606,7 +640,8 @@ static class Fps
                     try { File.WriteAllText(OutFile, pm != null ? FpsOf((int)fg).ToString() : ""); } catch { }
                     if (pm != null && colPid >= 0) fails = 0;
                 }
-                Thread.Sleep(want ? 1000 : 5000);
+                if (want && (DateTime.Now - lastStat).TotalSeconds >= 60) { lastStat = DateTime.Now; long lt; lock (sync) lt = linesTotal; Log("Bilder empfangen bisher: " + lt); }
+                Thread.Sleep(want ? 250 : 5000);   // 4x pro Sekunde aktualisieren
             }
         }
         finally

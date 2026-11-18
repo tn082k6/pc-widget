@@ -364,11 +364,21 @@ while ($true) {
         try { $volume = [PCW.AppVolume]::Get($script:volProc) } catch { $volume = -1 }
         if ($Gpu) { Update-Gpu }
         $fpsTxt = ''
-        try { $ff = Join-Path $Dir 'fps.txt'; if ((Test-Path $ff) -and ((Get-Date) - (Get-Item $ff).LastWriteTime).TotalSeconds -lt 4) { $fpsTxt = ([System.IO.File]::ReadAllText($ff)).Trim() } } catch { }
+        try { $ff = Join-Path $Dir 'fps.txt'; if ((Test-Path $ff) -and ((Get-Date) - (Get-Item $ff).LastWriteTime).TotalSeconds -lt 2) { $fpsTxt = ([System.IO.File]::ReadAllText($ff)).Trim() } } catch { }
         $line = '{0}|{1}|{2}|{3}|{4}|{5}|{6}|{7}|{8}|{9}|{10}|{11}|{12}|{13}|' -f ($title -replace '\|', '/'), ($artist -replace '\|', '/'), $status, ($pct.ToString([Globalization.CultureInfo]::InvariantCulture)), $coverPath, $coverColor, $posTxt, $durTxt, $volume, $gpuPct, $fgState, $script:srcLabel, $pingMs, $fpsTxt
         [System.IO.File]::WriteAllText($outFile, $line, $utf8)
+        $script:lastLine = $line; $script:lastFps = $fpsTxt
     }
     $tick--
+
+    # FPS 4x pro Sekunde nachtragen, ohne Musik usw. neu abzufragen
+    try {
+        $ff = Join-Path $Dir 'fps.txt'; $fq = ''
+        if ((Test-Path $ff) -and ((Get-Date) - (Get-Item $ff).LastWriteTime).TotalSeconds -lt 2) { $fq = ([System.IO.File]::ReadAllText($ff)).Trim() }
+        if ($script:lastLine -and $fq -ne $script:lastFps) {
+            $pp = $script:lastLine.Split('|'); if ($pp.Count -ge 14) { $pp[13] = $fq; $script:lastLine = ($pp -join '|'); $script:lastFps = $fq; [System.IO.File]::WriteAllText($outFile, $script:lastLine, $utf8) }
+        }
+    } catch { }
 
     # Beenden, wenn Rainmeter zu ist
     if ((Get-Date).Second % 10 -eq 0 -and $tick -eq 3) {

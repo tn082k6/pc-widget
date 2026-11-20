@@ -1,5 +1,11 @@
 # Änderungen
 
+## 1.8.7 – 18.11.2026
+
+- **Spiel-Leiste zeigt Song und Künstler**, zu lange Namen laufen als Laufschrift durch.
+- **Ein-/Ausklappen per Pfeil überarbeitet:** An den Rand geschoben bleibt an den Rand geschoben, bis der Pfeil geklickt wird; kein ungewolltes Zurückspringen mehr.
+- FPS-Anzeige zeigt **„AC“**, wenn ein Anti-Cheat (z. B. EA AntiCheat in Apex Legends) die Messung blockiert.
+- Update beendet die FPS-Messung zuverlässig, bevor Dateien ersetzt werden.
 ## 1.8.6 – 18.11.2026
 
 - **FPS-Anzeige repariert und genauer:** FPS werden aus PresentMons eigener Bildzeit-Messung berechnet (schnellste Zeichenfläche des Programms im Vordergrund) – ruhige, genaue Werte; Browser/YouTube werden mitgezählt.

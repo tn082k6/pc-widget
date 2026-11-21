@@ -17,7 +17,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("PC-Widget")]
 [assembly: System.Reflection.AssemblyProduct("PC-Widget")]
-[assembly: System.Reflection.AssemblyVersion("1.8.7.0")]
+[assembly: System.Reflection.AssemblyVersion("1.8.8.0")]
 
 static class Program
 {
@@ -151,7 +151,7 @@ static class Program
     // So ueberleben sie jedes Update.
     public class Cfg
     {
-        public bool Top = true, Sidebar = true, Game = true, Fps = false;
+        public bool Top = true, Sidebar = true, Game = true, Fps = false, MiniOnly = false;
         public int Corner = 1;      // 0 = oben links, 1 = oben rechts, 2 = unten links, 3 = unten rechts
         public int Monitor = 0;     // 0 = Hauptbildschirm, sonst Nummer (1, 2, 3 ...)
         public string Lang = "de";
@@ -170,7 +170,7 @@ static class Program
     {
         var c = new Cfg();
         Func<string, string, string> g = (k, d) => Rd(sf, "App", k) ?? d;
-        c.Top = g("Vordergrund", "1") == "1"; c.Sidebar = g("Seitenleiste", "1") == "1"; c.Game = g("Spielmodus", "1") == "1"; c.Fps = g("FPS", "0") == "1";
+        c.Top = g("Vordergrund", "1") == "1"; c.Sidebar = g("Seitenleiste", "1") == "1"; c.Game = g("Spielmodus", "1") == "1"; c.Fps = g("FPS", "0") == "1"; c.MiniOnly = g("NurLeiste", "0") == "1";
         int.TryParse(g("Ecke", "1"), out c.Corner); int.TryParse(g("Monitor", "0"), out c.Monitor);
         c.Lang = g("Sprache", "de") == "en" ? "en" : "de";
         return c;
@@ -192,7 +192,7 @@ static class Program
     public static void SaveCfg(Cfg c, string sf)
     {
         Set(sf, "App", "Vordergrund", c.Top ? "1" : "0"); Set(sf, "App", "Seitenleiste", c.Sidebar ? "1" : "0");
-        Set(sf, "App", "Spielmodus", c.Game ? "1" : "0"); Set(sf, "App", "FPS", c.Fps ? "1" : "0"); Set(sf, "App", "Ecke", c.Corner.ToString());
+        Set(sf, "App", "Spielmodus", c.Game ? "1" : "0"); Set(sf, "App", "FPS", c.Fps ? "1" : "0"); Set(sf, "App", "NurLeiste", c.MiniOnly ? "1" : "0"); Set(sf, "App", "Ecke", c.Corner.ToString());
         Set(sf, "App", "Monitor", c.Monitor.ToString()); Set(sf, "App", "Sprache", c.Lang);
     }
 
@@ -221,6 +221,8 @@ static class Program
         Set(skin, "Variables", "GameAction", c.Game ? "[!HideFade]" : "[!ShowFade]");
         Set(skin, "Variables", "AutoSide", c.Sidebar ? "1" : "0");
         Set(skin, "Variables", "Docked", "0");
+        Set(skin, "Variables", "MiniOnly", c.MiniOnly ? "1" : "0");   // nur kleine Leiste: grosses Widget bleibt unsichtbar (laeuft aber fuer den Helfer weiter)
+        Set(skin, "Variables", "StartAction", c.MiniOnly ? "[!Hide]" : "");
         Set(skin, "Variables", "GrabX", right ? "0" : "264");
         Set(skin, "Variables", "GrabArrow", right ? "[\\xE76C]" : "[\\xE76B]");
 
@@ -234,7 +236,7 @@ static class Program
         Set(tab, "Variables", "Arrow", right ? "[\\xE76B]" : "[\\xE76C]");
         Set(tab, "Variables", "TabX", tx); Set(tab, "Variables", "TabY", ty);
         Set(tab, "Variables", "TabAX", ax); Set(tab, "Variables", "TabAY", ay);
-        Set(tab, "Variables", "TabOnApp", c.Sidebar ? "[!ShowFade]" : "[!HideFade]");
+        Set(tab, "Variables", "TabOnApp", c.Sidebar && !c.MiniOnly ? "[!ShowFade]" : "[!HideFade]");
         Set(tab, "Variables", "TabOnDesk", "[!HideFade]");   // Griff verschwindet immer, wenn kein Programm vorne ist
 
         // Spiel-Modus-Leiste (gleiche Ecke wie das Widget)
@@ -242,11 +244,12 @@ static class Program
         Set(rmIni, @"PCWidget\Mini", "WindowX", wx); Set(rmIni, @"PCWidget\Mini", "AnchorX", ax);
         Set(rmIni, @"PCWidget\Mini", "WindowY", wy); Set(rmIni, @"PCWidget\Mini", "AnchorY", ay);
         Set(rmIni, @"PCWidget\Mini", "AlwaysOnTop", "2"); Set(rmIni, @"PCWidget\Mini", "Draggable", "0");
-        Set(rmIni, @"PCWidget\Mini", "KeepOnScreen", "1"); Set(rmIni, @"PCWidget\Mini", "ClickThrough", "1");
+        Set(rmIni, @"PCWidget\Mini", "KeepOnScreen", "1"); Set(rmIni, @"PCWidget\Mini", "ClickThrough", c.MiniOnly ? "0" : "1");
         Set(mini, "Variables", "MiniX", wx); Set(mini, "Variables", "MiniY", wy);
         Set(mini, "Variables", "MiniAX", ax); Set(mini, "Variables", "MiniAY", ay);
-        Set(mini, "Variables", "MiniOnGame", c.Game ? "[!ShowFade]" : "");
-        Set(mini, "Variables", "MiniOff", "[!HideFade]");
+        Set(mini, "Variables", "MiniOnGame", c.Game || c.MiniOnly ? "[!ShowFade]" : "");
+        Set(mini, "Variables", "MiniOff", c.MiniOnly ? "[!ShowFade]" : "[!HideFade]");
+        Set(mini, "Variables", "MiniStart", c.MiniOnly ? "[!ShowFade]" : "");
 
         // Sprache
         bool en = c.Lang == "en";
@@ -319,7 +322,7 @@ static class Installer
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool WritePrivateProfileString(string s, string k, string v, string f);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern int GetPrivateProfileString(string s, string k, string d, StringBuilder r, int n, string f);
 
-    public const string Version = "1.8.7";
+    public const string Version = "1.8.8";
     const string PayloadName = "payload.zip";
     const string UninstKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\PC-Widget";
     public static string Dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PC-Widget");
@@ -987,7 +990,7 @@ class SetupForm : Form
     bool running;
     Page page; Panel bar;
     TextBox search; ListBox results; Label chosen, status, searchIcon, updLink;
-    Toggle tAuto, tTop, tSide, tGame, tFps; Segmented segPos, segMon, segLang; PillButton save, stop;
+    Toggle tAuto, tTop, tSide, tGame, tMini, tFps; Segmented segPos, segMon, segLang; PillButton save, stop;
     Program.Place picked; Updater.Info update;
     System.Windows.Forms.Timer debounce; int searchId;
     Icon appIcon;
@@ -1071,8 +1074,9 @@ class SetupForm : Form
         tTop = new Toggle { BackColor = UI.Card, Checked = cfg.Top };
         tSide = new Toggle { BackColor = UI.Card, Checked = cfg.Sidebar };
         tGame = new Toggle { BackColor = UI.Card, Checked = cfg.Game };
+        tMini = new Toggle { BackColor = UI.Card, Checked = cfg.MiniOnly };
         tFps = new Toggle { BackColor = UI.Card, Checked = cfg.Fps && Fps.TaskExists() };
-        rowToggles = new[] { tAuto, tTop, tSide, tGame, tFps };
+        rowToggles = new[] { tAuto, tTop, tSide, tGame, tMini, tFps };
 
         // Monitor
         var mons = Program.Monitors();
@@ -1098,7 +1102,7 @@ class SetupForm : Form
         updLink.MouseLeave += (s, e) => { if (update == null) updLink.ForeColor = UI.Sub; };
         updLink.Click += (s, e) => { if (update != null) new UpdateForm(update).ShowDialog(this); else CheckUpdate(true); };
 
-        page.Controls.AddRange(new Control[] { results, searchIcon, search, chosen, tAuto, tTop, tSide, tGame, tFps, segMon, segPos, segLang });
+        page.Controls.AddRange(new Control[] { results, searchIcon, search, chosen, tAuto, tTop, tSide, tGame, tMini, tFps, segMon, segPos, segLang });
         bar.Controls.AddRange(new Control[] { status, stop, save, updLink });
         Controls.Add(page); Controls.Add(bar);
         results.BringToFront();
@@ -1134,8 +1138,8 @@ class SetupForm : Form
         results.Location = new Point(L0, Y(searchCard.Bottom + UI.S(6))); results.Width = CW;
         secSet = searchCard.Bottom + UI.S(44);
         rowH = UI.S(62);
-        setCard = new Rectangle(L0, secSet + UI.S(24), CW, rowH * 5);
-        for (int i = 0; i < 5; i++) rowToggles[i].Location = new Point(setCard.Right - rowToggles[i].Width - UI.S(14), Y(setCard.Y + i * rowH + (rowH - rowToggles[i].Height) / 2));
+        setCard = new Rectangle(L0, secSet + UI.S(24), CW, rowH * 6);
+        for (int i = 0; i < 6; i++) rowToggles[i].Location = new Point(setCard.Right - rowToggles[i].Width - UI.S(14), Y(setCard.Y + i * rowH + (rowH - rowToggles[i].Height) / 2));
         secMon = setCard.Bottom + UI.S(22);
         int monRows = (segMon.Items.Length + 1) / 2;
         segMon.Location = new Point(L0, Y(secMon + UI.S(24))); segMon.Size = new Size(CW, UI.S(38) * monRows);
@@ -1159,7 +1163,7 @@ class SetupForm : Form
     {
         var sp = page.AutoScrollPosition; var p = new Point(pt.X - sp.X, pt.Y - sp.Y);
         if (!setCard.Contains(p)) return null;
-        int i = (p.Y - setCard.Y) / rowH; return i >= 0 && i < 5 ? rowToggles[i] : null;
+        int i = (p.Y - setCard.Y) / rowH; return i >= 0 && i < 6 ? rowToggles[i] : null;
     }
 
     // ---------- Malen ----------
@@ -1181,8 +1185,9 @@ class SetupForm : Form
             { Tr.T("Immer im Vordergrund", "Always on top"), Tr.T("Auch über Spielen im randlosen Fenster", "Also over borderless games") },
             { Tr.T("An den Rand bei offenen Fenstern", "Hide to edge when apps are open"), Tr.T("Pfeil am Rand – Maus drauf holt es zurück", "Arrow at the edge – hover to bring it back") },
             { Tr.T("Spiel-Modus", "Game mode"), Tr.T("Beim Zocken nur eine kleine Leiste (Uhr, Song, Ping)", "Small bar while gaming (clock, song, ping)") },
+            { Tr.T("Nur kleine Leiste", "Small bar only"), Tr.T("Immer nur die kleine Leiste statt des großen Widgets", "Always show only the small bar instead of the big widget") },
             { Tr.T("FPS anzeigen", "Show FPS"), Tr.T("Braucht einmal Admin-Rechte (PresentMon von Intel)", "Needs admin rights once (PresentMon by Intel)") } };
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 6; i++)
         {
             int ry = setCard.Y + i * rowH;
             if (i > 0) using (var p = new Pen(UI.Line)) g.DrawLine(p, setCard.X + UI.S(16), ry, setCard.Right, ry);
@@ -1279,7 +1284,7 @@ class SetupForm : Form
         {
             var c = new Program.Cfg
             {
-                Top = tTop.Checked, Sidebar = tSide.Checked, Game = tGame.Checked, Fps = tFps.Checked,
+                Top = tTop.Checked, Sidebar = tSide.Checked, Game = tGame.Checked, MiniOnly = tMini.Checked, Fps = tFps.Checked,
                 Corner = segPos.Selected,
                 Monitor = ((List<int>)segMon.Tag)[Math.Max(0, segMon.Selected)],
                 Lang = segLang.Selected == 1 ? "en" : "de"

@@ -4,6 +4,12 @@ Ein Desktop-Widget für Windows 10/11 im **iOS-18-Look** (OLED-Schwarz): Uhr, Sp
 
 <img src="docs/icon.png" width="96" alt="App-Icon">
 
+## ⬇️ Download
+
+**[PC-Widget.exe herunterladen](https://github.com/tn082k6/pc-widget/releases/latest/download/PC-Widget.exe)** – immer die neueste Version, eine einzige Datei.
+
+Keine Voraussetzungen: Rainmeter ist schon eingebaut, .NET Framework 4 ist bei Windows 10/11 dabei. Kein Konto, kein Installer – runterladen, doppelklicken, fertig.
+
 ## Was es kann
 
 **Immer sichtbar (kompakt)**
@@ -29,7 +35,7 @@ Ein Desktop-Widget für Windows 10/11 im **iOS-18-Look** (OLED-Schwarz): Uhr, Sp
 
 ## Benutzen
 
-1. Unter **[Releases](../../releases)** `PC-Widget.exe` (oder `PC-Widget.zip`) herunterladen.
+1. **[PC-Widget.exe herunterladen](https://github.com/tn082k6/pc-widget/releases/latest/download/PC-Widget.exe)** (ältere Versionen und die ZIP unter **[Releases](../../releases)**).
 2. `PC-Widget.exe` doppelklicken – auch direkt aus der ZIP heraus. Die App richtet sich beim ersten Start selbst ein (nach `%LOCALAPPDATA%\PC-Widget`, mit Startmenü-Eintrag).
 3. Stadt eingeben, **Speichern & Starten**.
 

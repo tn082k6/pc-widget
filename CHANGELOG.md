@@ -1,5 +1,10 @@
 # Änderungen
 
+## 1.8.8 – 21.11.2026
+
+- Neuer Schalter **Nur kleine Leiste**: statt des großen Widgets ist immer nur die kleine Leiste (Uhr, Song, Ping, FPS) zu sehen – auch ohne Spiel. Rechtsklick auf die Leiste öffnet die Einstellungen.
+- README: direkter Download-Link zur neuesten PC-Widget.exe.
+
 ## 1.8.7 – 18.11.2026
 
 - **Spiel-Leiste zeigt Song und Künstler**, zu lange Namen laufen als Laufschrift durch.
